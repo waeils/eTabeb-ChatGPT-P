@@ -208,15 +208,11 @@ function BookingContent() {
                 <div className="text-center mb-6">
                     {/* eTabeb Logo */}
                     <div className="flex items-center justify-center mb-4">
-                        <div className="w-12 h-12 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg">
-                            <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                            </svg>
-                        </div>
-                        <div className="ml-3">
-                            <h1 className="text-2xl font-bold bg-gradient-to-r from-teal-600 to-cyan-600 bg-clip-text text-transparent">eTabeb</h1>
-                            <p className="text-xs text-gray-500">Medical Booking</p>
-                        </div>
+                        <img 
+                            src="/etabeb-logo.png" 
+                            alt="eTabeb" 
+                            className="h-12 w-auto"
+                        />
                     </div>
                     <h2 className="text-xl font-semibold text-gray-800">Book Your Appointment</h2>
                     <p className="text-sm text-gray-500 mt-1">Complete your booking securely</p>
