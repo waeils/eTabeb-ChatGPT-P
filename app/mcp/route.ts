@@ -354,4 +354,5 @@ const handler = createMcpHandler(async (server) => {
   );
 });
 
-export const { GET, POST } = handler;
+export const GET = handler;
+export const POST = handler;
