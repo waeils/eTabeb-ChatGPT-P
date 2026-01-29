@@ -13,86 +13,788 @@
     
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f6f8fb;
-      overflow: hidden;
+      background: #1a2332;
+      overflow-y: auto;
+      overflow-x: hidden;
+      color: #fff;
     }
     
     #booking-container {
       width: 100%;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
+      min-height: 100vh;
+      padding: 20px;
     }
     
-    iframe {
+    .header {
+      text-align: center;
+      padding: 24px 0;
+      background: #1a2332;
+      border-bottom: 1px solid #2d3748;
+    }
+    
+    .logo {
+      width: 140px;
+      height: auto;
+      margin-bottom: 12px;
+    }
+    
+    .header h1 {
+      color: #3EBFA5;
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+    
+    .header p {
+      color: #94a3b8;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #2d3748;
+      padding: 6px 14px;
+      border-radius: 20px;
+    }
+    
+    .content {
+      background: #1a2332;
+      padding: 24px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    
+    .search-box {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    
+    input[type="text"], input[type="tel"] {
       flex: 1;
-      width: 100%;
+      padding: 14px 16px;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      font-size: 15px;
+      background: #2d3748;
+      color: #fff;
+      transition: all 0.3s;
+    }
+    
+    input:focus {
+      outline: none;
+      border-color: #3EBFA5;
+      background: #374151;
+    }
+    
+    input::placeholder {
+      color: #64748b;
+    }
+    
+    .btn {
+      padding: 14px 28px;
+      background: #1976B2;
+      color: white;
       border: none;
-      background: white;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 15px;
+      transition: all 0.3s;
+    }
+    
+    .btn:hover {
+      background: #1565C0;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(25, 118, 178, 0.3);
+    }
+    
+    .btn-secondary {
+      background: #f5f5f5;
+      color: #333;
+      padding: 10px 20px;
+      font-size: 14px;
+    }
+    
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+    
+    .doctor-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+    
+    .doctor-card {
+      padding: 16px;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      background: #243447;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .doctor-card:hover {
+      border-color: #3EBFA5;
+      background: #2d3f54;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(62, 191, 165, 0.2);
+    }
+    
+    .doctor-name {
+      font-weight: 600;
+      color: #fff;
+      font-size: 15px;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .doctor-specialty {
+      color: #94a3b8;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    
+    .doctor-facility {
+      color: #64748b;
+      font-size: 12px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    .doctor-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #2d3748;
+    }
+    
+    .doctor-rating {
+      color: #fbbf24;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    .doctor-price {
+      color: #3EBFA5;
+      font-weight: 600;
+    }
+    
+    .date-group {
+      margin-bottom: 24px;
+    }
+    
+    .date-accordion {
+      margin-bottom: 12px;
+    }
+    
+    .date-header-btn {
+      width: 100%;
+      padding: 16px;
+      background: #243447;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.3s;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    
+    .date-header-btn:hover {
+      background: #2d3f54;
+      border-color: #3EBFA5;
+    }
+    
+    .date-header-btn.active {
+      background: #3EBFA5;
+      border-color: #3EBFA5;
+      border-radius: 12px 12px 0 0;
+    }
+    
+    .date-content {
+      display: none;
+      background: #243447;
+      border: 1px solid #2d3748;
+      border-top: none;
+      border-radius: 0 0 12px 12px;
+      padding: 16px;
+    }
+    
+    .date-content.active {
+      display: block;
+    }
+    
+    .timeslot-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 8px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    
+    .timeslot-card {
+      padding: 12px;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      background: #243447;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.3s;
+    }
+    
+    .timeslot-card:hover {
+      border-color: #3EBFA5;
+      background: #2d3f54;
+      transform: translateY(-2px);
+    }
+    
+    .timeslot-time {
+      font-weight: 600;
+      color: #fff;
+      font-size: 14px;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-label {
+      display: block;
+      color: #333;
+      font-weight: 600;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    
+    .patient-card {
+      padding: 14px;
+      border: 2px solid #E0E0E0;
+      border-radius: 10px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .patient-card:hover, .patient-card.selected {
+      border-color: #1976B2;
+      background: #F5F9FC;
+    }
+    
+    .patient-name {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 4px;
+    }
+    
+    .patient-id {
+      color: #888;
+      font-size: 13px;
+    }
+    
+    .success-message {
+      text-align: center;
+      padding: 40px 20px;
+    }
+    
+    .success-icon {
+      font-size: 64px;
+      margin-bottom: 16px;
+    }
+    
+    .success-title {
+      color: #3EBFA5;
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    
+    .success-text {
+      color: #666;
+      font-size: 15px;
     }
     
     .loading {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
+      text-align: center;
+      color: #94a3b8;
+      padding: 40px;
       font-size: 16px;
-      color: #6c768a;
+    }
+    
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    
+    .error {
+      background: #FEE;
+      border: 2px solid #F88;
+      color: #C33;
+      padding: 12px 16px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+    
+    .security-note {
+      background: #F0F9FF;
+      border-left: 4px solid #1976B2;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #666;
     }
   </style>
 </head>
 <body>
-  <div id="booking-container">
-    <div class="loading">Loading booking interface...</div>
-    <iframe 
-      id="booking-iframe"
-      src=""
-      allow="clipboard-write"
-      sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
-      style="display: none;"
-    ></iframe>
-  </div>
+  <div id="booking-container"></div>
   
   <script>
-    const iframe = document.getElementById('booking-iframe');
-    const loading = document.querySelector('.loading');
+    const container = document.getElementById('booking-container');
     const baseUrl = '{{BOOKING_APP_URL}}';
     
-    // Get appointment info from ChatGPT tool output
-    const toolOutput = window.openai?.toolOutput || {};
-    const { timeslotId, doctorName, facilityName, dateTime } = toolOutput;
+    // State management
+    let doctors = [];
+    let selectedDoctor = null;
+    let timeslots = [];
     
-    // Build URL for simplified booking page
-    const params = new URLSearchParams({
-      timeslotId: timeslotId || '',
-      doctorName: doctorName || '',
-      facility: facilityName || '',
-      dateTime: dateTime || ''
-    });
+    // Helper: Get doctor initials for avatar
+    function getInitials(name) {
+      return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+    }
     
-    iframe.src = `${baseUrl}/book?${params.toString()}`;
+    // Helper: Generate avatar color
+    function getAvatarColor(name) {
+      const colors = ['#1976B2', '#3EBFA5', '#9C27B0', '#FF9800', '#E91E63'];
+      const index = name.length % colors.length;
+      return colors[index];
+    }
     
-    iframe.onload = () => {
-      loading.style.display = 'none';
-      iframe.style.display = 'block';
+    function renderSearchUI() {
+      container.innerHTML = `
+        <div class="header">
+          <img src="https://e-tabeb-chat-gpt-p.vercel.app/eTabeb.svg" alt="eTabeb" style="width: 140px; height: auto; margin: 0 auto 16px; display: block;" onerror="this.src='https://e-tabeb-chat-gpt-p.vercel.app/eTabeb%204.png'" />
+          <h1>Book Appointment</h1>
+        </div>
+        <div class="content">
+          <div style="background: #243447; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+              <div style="width: 40px; height: 40px; background: #3EBFA5; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700;">1</div>
+              <h3 style="color: #fff; margin: 0; font-size: 18px;">Select Doctor</h3>
+            </div>
+            <div class="search-box">
+              <input 
+                type="text" 
+                id="search-input" 
+                placeholder="Search by name, specialty, or hospital..."
+              />
+              <button id="search-btn" class="btn">Search</button>
+            </div>
+          </div>
+          <div id="results"></div>
+        </div>
+      `;
+      
+      document.getElementById('search-btn').onclick = handleSearch;
+      document.getElementById('search-input').onkeypress = (e) => {
+        if (e.key === 'Enter') handleSearch();
+      };
+    }
+    
+    async function handleSearch() {
+      const searchText = document.getElementById('search-input').value.trim();
+      if (!searchText) return;
+      
+      document.getElementById('results').innerHTML = '<div class="loading">Searching...</div>';
+      
+      try {
+        // Call private search_doctors tool
+        const result = await window.openai.callTool('search_doctors', {
+          searchText: searchText,
+          limit: 10
+        });
+        
+        // Fetch doctors from API directly for structured data
+        const response = await fetch(`${baseUrl}/api/doctors`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ SearchText: searchText, CityId: 1, limit: 10 })
+        });
+        doctors = await response.json();
+        
+        renderDoctors();
+      } catch (err) {
+        document.getElementById('results').innerHTML = `<p style="color: #d32f2f; text-align: center;">Error: ${err.message}</p>`;
+      }
+    }
+    
+    function renderDoctors() {
+      if (!doctors || doctors.length === 0) {
+        document.getElementById('results').innerHTML = '<div class="loading">No doctors found</div>';
+        return;
+      }
+      
+      const html = doctors.map(d => {
+        const initials = getInitials(d.name);
+        const avatarColor = getAvatarColor(d.name);
+        const hasImage = d.image && d.image.trim() !== '';
+        
+        const avatarHtml = hasImage 
+          ? `<img src="${d.image}" alt="${d.name}" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+             <div style="width: 48px; height: 48px; border-radius: 50%; background: ${avatarColor}; display: none; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 16px; flex-shrink: 0;">
+               ${initials}
+             </div>`
+          : `<div style="width: 48px; height: 48px; border-radius: 50%; background: ${avatarColor}; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 16px; flex-shrink: 0;">
+               ${initials}
+             </div>`;
+        
+        return `
+          <div class="doctor-card" onclick="selectDoctor('${d.id}')">
+            <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+              ${avatarHtml}
+              <div style="flex: 1; min-width: 0;">
+                <div class="doctor-name">${d.name}</div>
+                <div class="doctor-specialty">${d.specialty}</div>
+              </div>
+            </div>
+            <div class="doctor-facility">📍 ${d.facility}</div>
+            <div class="doctor-meta">
+              <span class="doctor-rating">⭐ ${d.rating || '0'}</span>
+              <span class="doctor-price">${d.price} ${d.currency}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+      
+      document.getElementById('results').innerHTML = `<div class="doctor-grid">${html}</div>`;
+    }
+    
+    window.selectDoctor = async function(doctorId) {
+      selectedDoctor = doctors.find(d => d.id === doctorId);
+      if (!selectedDoctor) return;
+      
+      document.getElementById('results').innerHTML = '<p style="text-align: center; color: #666;">Loading timeslots...</p>';
+      
+      try {
+        // Call private get_timeslots tool
+        await window.openai.callTool('get_timeslots', {
+          doctorId: doctorId
+        });
+        
+        // Fetch timeslots from API
+        const response = await fetch(`${baseUrl}/api/timeslots`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ medicalFacilityDoctorSpecialityRTId: doctorId })
+        });
+        timeslots = await response.json();
+        
+        renderTimeslots();
+      } catch (err) {
+        document.getElementById('results').innerHTML = `<p style="color: #d32f2f; text-align: center;">Error: ${err.message}</p>`;
+      }
     };
     
-    // Listen for booking completion
-    window.addEventListener('message', (event) => {
-      if (event.origin !== baseUrl) return;
-      
-      if (event.data.type === 'BOOKING_COMPLETE') {
-        if (window.openai?.sendFollowUp) {
-          window.openai.sendFollowUp(
-            `✅ Booking confirmed! Appointment with Dr. ${doctorName} at ${facilityName}`
-          );
-        }
-        
-        if (window.openai?.closeWidget) {
-          setTimeout(() => window.openai.closeWidget(), 2000);
-        }
+    let selectedDate = null;
+    
+    function renderTimeslots() {
+      if (!timeslots || timeslots.length === 0) {
+        document.getElementById('results').innerHTML = `
+          <button onclick="renderSearchUI()" class="btn btn-secondary">← Back</button>
+          <div class="loading">No available appointments</div>
+        `;
+        return;
       }
-    });
+      
+      // Group timeslots by date
+      const grouped = {};
+      timeslots.forEach(slot => {
+        if (!grouped[slot.date]) {
+          grouped[slot.date] = [];
+        }
+        grouped[slot.date].push(slot);
+      });
+      
+      const dates = Object.keys(grouped).slice(0, 10);
+      if (!selectedDate && dates.length > 0) {
+        selectedDate = dates[0];
+      }
+      
+      const header = `
+        <div style="background: #243447; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+            <div style="width: 40px; height: 40px; background: #3EBFA5; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700;">2</div>
+            <h3 style="color: #fff; margin: 0; font-size: 18px;">Available Slots</h3>
+          </div>
+          <p style="color: #94a3b8; margin: 0; font-size: 14px;">Appointments for ${selectedDoctor.name}</p>
+        </div>
+      `;
+      
+      const dateAccordions = dates.map(date => {
+        const slots = grouped[date].map(slot => `
+          <div class="timeslot-card" onclick="selectTimeslot(${slot.timeslotRTId}, '${slot.date}', '${slot.time}')">
+            <div class="timeslot-time">${slot.time}</div>
+          </div>
+        `).join('');
+        
+        const isActive = date === selectedDate;
+        const slotCount = grouped[date].length;
+        
+        return `
+          <div class="date-accordion">
+            <button class="date-header-btn ${isActive ? 'active' : ''}" onclick="toggleDate('${date}')">
+              <span>📅 ${date}</span>
+              <span style="color: #94a3b8; font-size: 13px; font-weight: normal;">${slotCount} slots ${isActive ? '▲' : '▼'}</span>
+            </button>
+            <div class="date-content ${isActive ? 'active' : ''}">
+              <div class="timeslot-grid">${slots}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      
+      document.getElementById('results').innerHTML = `
+        ${header}
+        ${dateAccordions}
+        <button onclick="renderSearchUI()" class="btn btn-secondary" style="margin-top: 24px; width: 100%;">← Back to Search</button>
+      `;
+    }
+    
+    window.toggleDate = function(date) {
+      selectedDate = selectedDate === date ? null : date;
+      renderTimeslots();
+    };
+    
+    let selectedTimeslot = null;
+    
+    window.selectTimeslot = function(timeslotId, date, time) {
+      selectedTimeslot = { timeslotId, date, time };
+      renderBookingForm();
+    };
+    
+    function renderBookingForm() {
+      const header = `
+        <div style="background: #243447; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+            <div style="width: 40px; height: 40px; background: #3EBFA5; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700;">3</div>
+            <h3 style="color: #fff; margin: 0; font-size: 18px;">Complete Booking</h3>
+          </div>
+          <div style="color: #94a3b8; font-size: 14px;">
+            <p style="margin: 0 0 4px 0;"><strong style="color: #fff;">${selectedDoctor.name}</strong></p>
+            <p style="margin: 0 0 4px 0;">${selectedDoctor.specialty} • ${selectedDoctor.facility}</p>
+            <p style="margin: 0; color: #3EBFA5;">📅 ${selectedTimeslot.date} at ${selectedTimeslot.time}</p>
+          </div>
+        </div>
+      `;
+      
+      document.getElementById('results').innerHTML = `
+        ${header}
+        <div class="security-note">
+          🔒 Your information is secure. We'll verify your phone number and complete the booking.
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="color: #fff; display: block; margin-bottom: 8px; font-weight: 500;">Phone Number</label>
+          <div style="display: flex; gap: 12px;">
+            <select id="country-select" style="padding: 14px 16px; border: 1px solid #2d3748; border-radius: 12px; background: #2d3748; color: #fff; font-size: 15px; min-width: 120px;">
+              <option value="1">🇸🇦 +966</option>
+              <option value="2">🇦🇪 +971</option>
+              <option value="3">🇰🇼 +965</option>
+              <option value="4">🇧🇭 +973</option>
+              <option value="5">🇴🇲 +968</option>
+              <option value="6">🇶🇦 +974</option>
+            </select>
+            <input type="tel" id="phone-input" placeholder="5XXXXXXXX" style="flex: 1;" />
+          </div>
+        </div>
+        <button id="send-otp-btn" onclick="sendOTP()" class="btn" style="width: 100%; margin-bottom: 12px;">Send OTP</button>
+        <button onclick="renderTimeslots()" class="btn btn-secondary" style="width: 100%;">← Back to Slots</button>
+        <div id="otp-section" style="display: none;"></div>
+      `;
+    }
+    
+    window.sendOTP = async function() {
+      const phone = document.getElementById('phone-input').value.trim();
+      const countryId = document.getElementById('country-select').value;
+      const btn = document.getElementById('send-otp-btn');
+      
+      if (!phone) {
+        alert('Please enter your phone number');
+        return;
+      }
+      
+      btn.disabled = true;
+      btn.innerHTML = '<span style="display: inline-flex; align-items: center; gap: 8px;"><svg width="16" height="16" viewBox="0 0 24 24" style="animation: spin 1s linear infinite;"><circle cx="12" cy="12" r="10" stroke="white" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg> Sending...</span>';
+      
+      try {
+        // First search user to get userSessionId
+        const searchRes = await fetch(`${baseUrl}/api/auth/search-user`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mobileNumber: phone, countryId: parseInt(countryId) })
+        });
+        const searchData = await searchRes.json();
+        console.log('Search user response:', searchData);
+        
+        // Extract sessionId from search response
+        const sessionId = searchData.sessionId || searchData.userSessionId || searchData.userData?.userSessionId || searchData.userData?.usersSessionId;
+        console.log('Extracted sessionId:', sessionId);
+        
+        // Then send OTP
+        const otpRes = await fetch(`${baseUrl}/api/auth/send-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mobileNumber: phone, countryId: parseInt(countryId) })
+        });
+        const otpData = await otpRes.json();
+        
+        if (otpData.signOTPId) {
+          showOTPInput(otpData.signOTPId, phone, sessionId || '');
+        } else {
+          btn.disabled = false;
+          btn.innerHTML = 'Send OTP';
+          alert('Failed to send OTP. Please try again.');
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = 'Send OTP';
+        alert('Error: ' + err.message);
+      }
+    };
+    
+    function showOTPInput(signOTPId, phone, sessionId) {
+      document.getElementById('send-otp-btn').style.display = 'none';
+      document.getElementById('otp-section').style.display = 'block';
+      document.getElementById('otp-section').innerHTML = `
+        <div class="form-group">
+          <label class="form-label" style="color: #fff; display: block; margin-bottom: 8px; font-weight: 500;">Enter OTP Code</label>
+          <input type="text" id="otp-input" placeholder="Enter 6-digit code" maxlength="6" style="width: 100%;" />
+        </div>
+        <button onclick="verifyOTP('${signOTPId}', '${phone}', '${sessionId}')" class="btn" style="width: 100%;">Verify & Continue</button>
+      `;
+    }
+    
+    window.verifyOTP = async function(signOTPId, phone, sessionId) {
+      const otpCode = document.getElementById('otp-input').value.trim();
+      if (!otpCode) {
+        alert('Please enter OTP code');
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${baseUrl}/api/auth/verify-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ signOTPId, signOTPCode: otpCode })
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+          // Use sessionId from search-user, not from verify-otp
+          loadPatients(phone, sessionId);
+        } else {
+          alert('Invalid OTP. Please try again.');
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    };
+    
+    async function loadPatients(phone, sessionId) {
+      try {
+        console.log('Loading patients with sessionId:', sessionId);
+        const response = await fetch(`${baseUrl}/api/auth/patients`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: sessionId, mobileNumber: phone })
+        });
+        const patients = await response.json();
+        console.log('Patients response:', patients);
+        
+        showPatientSelection(patients, phone);
+      } catch (err) {
+        alert('Error loading patients: ' + err.message);
+      }
+    }
+    
+    function showPatientSelection(patients, phone) {
+      if (!patients || patients.length === 0) {
+        document.getElementById('otp-section').innerHTML = `
+          <div style="color: #fff; text-align: center; padding: 20px;">No patients found for this number.</div>
+        `;
+        return;
+      }
+      
+      const patientCards = patients.map((p, i) => `
+        <div class="patient-card" onclick="selectPatient(${i}, '${phone}')" style="padding: 16px; background: #243447; border: 1px solid #2d3748; border-radius: 12px; margin-bottom: 12px; cursor: pointer; transition: all 0.3s;" onmouseover="this.style.borderColor='#3EBFA5'" onmouseout="this.style.borderColor='#2d3748'">
+          <div style="font-weight: 600; color: #fff; font-size: 16px; margin-bottom: 4px;">${p.patientName}</div>
+          <div style="color: #94a3b8; font-size: 14px;">ID: ${p.nationalId || 'N/A'}</div>
+        </div>
+      `).join('');
+      
+      document.getElementById('otp-section').innerHTML = `
+        <div class="form-group">
+          <label class="form-label" style="color: #fff; display: block; margin-bottom: 12px; font-weight: 500; font-size: 16px;">Select Patient</label>
+          ${patientCards}
+        </div>
+      `;
+      
+      window.patientsData = patients;
+      window.phoneNumber = phone;
+    }
+    
+    window.selectPatient = async function(index, phone) {
+      const patient = window.patientsData[index];
+      
+      try {
+        const response = await fetch(`${baseUrl}/api/appointments/reserve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            timeslotRTId: selectedTimeslot.timeslotId,
+            patientId: patient.patientId,
+            mobileNumber: phone
+          })
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+          showSuccess();
+        } else {
+          alert('Booking failed: ' + (data.message || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    };
+    
+    function showSuccess() {
+      document.getElementById('results').innerHTML = `
+        <div class="success-message">
+          <div class="success-icon">✅</div>
+          <div class="success-title">Booking Confirmed!</div>
+          <div class="success-text">
+            Your appointment with ${selectedDoctor.name}<br/>
+            on ${selectedTimeslot.date} at ${selectedTimeslot.time}<br/>
+            has been successfully booked.
+          </div>
+          <button onclick="renderSearchUI()" class="btn" style="margin-top: 24px;">Book Another Appointment</button>
+        </div>
+      `;
+    }
+    
+    // Initialize
+    renderSearchUI();
   </script>
 </body>
 </html>
