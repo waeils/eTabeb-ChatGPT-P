@@ -4,8 +4,18 @@ export async function POST(request: Request) {
     try {
         const body = await request.json();
 
-        // Call your real API
-        const response = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
+        // Use DoctorListWithSearchNames if SearchText contains a name (more than 2 words or specific patterns)
+        // Otherwise use regular DoctorList for specialty/facility search
+        const searchText = body.SearchText || '';
+        const useNameSearch = searchText.split(' ').length >= 2 || /^dr\./i.test(searchText);
+        
+        const apiEndpoint = useNameSearch 
+            ? 'https://etapisd.etabeb.com/api/AI/DoctorListWithSearchNames'
+            : 'https://etapisd.etabeb.com/api/AI/DoctorList';
+
+        console.log(`Using ${useNameSearch ? 'Name' : 'General'} search API for: "${searchText}"`);
+
+        const response = await fetch(apiEndpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

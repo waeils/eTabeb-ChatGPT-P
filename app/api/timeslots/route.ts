@@ -31,18 +31,13 @@ export async function POST(request: Request) {
         console.log('Total slots:', timeslots.length);
         console.log('===========================================');
 
-        // Filter by date if provided, otherwise show next 7 days
-        const today = new Date();
-        const maxDate = new Date();
-        maxDate.setDate(today.getDate() + 7);
+        // If no timeslots, return empty array
+        if (!timeslots || timeslots.length === 0) {
+            return NextResponse.json([]);
+        }
 
-        const filteredSlots = timeslots.filter((slot: any) => {
-            const slotDate = new Date(slot.timeslotDateStart);
-            return slotDate >= today && slotDate <= maxDate;
-        });
-
-        // Limit to 50 slots to avoid ResponseTooLargeError
-        const limitedSlots = filteredSlots.slice(0, 50);
+        // Limit to 50 slots to avoid ResponseTooLargeError (no date filtering)
+        const limitedSlots = timeslots.slice(0, 50);
 
         // Transform to minimal fields for ChatGPT (avoid ResponseTooLargeError)
         const transformedTimeslots = limitedSlots.map((slot: any) => ({
