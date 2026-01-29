@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
     useWidgetProps,
     useMaxHeight,
@@ -35,6 +36,18 @@ type Country = {
     flag: string;
 };
 
+type IdentityType = {
+    value: number;
+    text: string;
+    text2: string;
+};
+
+type Patient = {
+    patientId: number;
+    patientName: string;
+    mobileNo: string;
+};
+
 type AppointmentData = {
     doctors?: Doctor[];
     selectedDoctor?: Doctor;
@@ -42,7 +55,7 @@ type AppointmentData = {
     date?: string;
 };
 
-type AuthStep = "phone" | "otp" | "register" | "verified";
+type AuthStep = "phone" | "otp" | "register" | "pick-patient" | "verified";
 
 export default function AppointmentBooking() {
     const toolOutput = useWidgetProps<AppointmentData>();
@@ -59,6 +72,7 @@ export default function AppointmentBooking() {
     const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
     const [bookingConfirmed, setBookingConfirmed] = useState(false);
     const [confirmationId, setConfirmationId] = useState("");
+    const [searchTerm, setSearchTerm] = useState("");
 
     // Auth States
     const [countries, setCountries] = useState<Country[]>([]);
@@ -68,8 +82,18 @@ export default function AppointmentBooking() {
     const [otpCode, setOtpCode] = useState("");
     const [signOTPId, setSignOTPId] = useState("");
     const [sessionId, setSessionId] = useState("");
+    const [patients, setPatients] = useState<Patient[]>([]);
+    const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
     const [isAuthLoading, setIsAuthLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Registration States
+    const [identityTypes, setIdentityTypes] = useState<IdentityType[]>([]);
+    const [selectedIdentityType, setSelectedIdentityType] = useState<IdentityType | null>(null);
+    const [identityNumber, setIdentityNumber] = useState("");
+    const [firstName, setFirstName] = useState("");
+    const [lastName, setLastName] = useState("");
+    const [email, setEmail] = useState("");
 
     // Initial Data Fetching
     useEffect(() => {
@@ -85,7 +109,7 @@ export default function AppointmentBooking() {
                 if (!toolOutput?.doctors) {
                     const dRes = await fetch('/api/doctors');
                     const dData = await dRes.json();
-                    setDoctors(dData.slice(0, 8));
+                    setDoctors(dData);
                 } else {
                     setDoctors(toolOutput.doctors);
                 }
@@ -100,8 +124,8 @@ export default function AppointmentBooking() {
 
     // Fetch Timeslots when doctor changes
     useEffect(() => {
-        const doctorId = selectedDoctor?.medicalFacilityDoctorSpecialityRTId;
-        if (!doctorId) return;
+        const docId = selectedDoctor?.medicalFacilityDoctorSpecialityRTId;
+        if (!docId) return;
 
         async function fetchSlots() {
             setLoadingSlots(true);
@@ -110,7 +134,7 @@ export default function AppointmentBooking() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        medicalFacilityDoctorSpecialityRTId: doctorId
+                        medicalFacilityDoctorSpecialityRTId: docId
                     }),
                 });
                 const data = await res.json();
@@ -119,7 +143,7 @@ export default function AppointmentBooking() {
                     time: s.time,
                     available: s.available,
                     timeslotRTId: s.id
-                })).slice(0, 12));
+                })));
             } catch (err) {
                 console.error("Slots error:", err);
             } finally {
@@ -128,6 +152,23 @@ export default function AppointmentBooking() {
         }
         fetchSlots();
     }, [selectedDoctor]);
+
+    // Fetch Identity Types for registration
+    useEffect(() => {
+        if (authStep === "register") {
+            async function fetchIdTypes() {
+                try {
+                    const res = await fetch('/api/auth/identity-types');
+                    const data = await res.json();
+                    setIdentityTypes(data);
+                    if (data.length > 0) setSelectedIdentityType(data[0]);
+                } catch (err) {
+                    console.error("ID types error:", err);
+                }
+            }
+            fetchIdTypes();
+        }
+    }, [authStep]);
 
     // Auth Handlers
     const handlePhoneSubmit = async (e: React.FormEvent) => {
@@ -173,10 +214,12 @@ export default function AppointmentBooking() {
             });
             const data = await res.json();
             if (data.isVerified) {
-                setSessionId(data.sessionId);
-                setAuthStep("verified");
-                // Auto-confirm booking if we have a session
-                confirmFinalBooking(data.sessionId);
+                if (data.hasAccount) {
+                    setSessionId(data.sessionId);
+                    fetchPatients(data.sessionId);
+                } else {
+                    setAuthStep("register");
+                }
             } else {
                 setError("Invalid verification code");
             }
@@ -187,17 +230,93 @@ export default function AppointmentBooking() {
         }
     };
 
-    const confirmFinalBooking = async (sid: string) => {
-        if (!selectedDoctor || !selectedSlot) return;
-
+    const fetchPatients = async (sid: string) => {
         setIsAuthLoading(true);
         try {
-            // Simulate eTabeb BookAppointment API
-            await new Promise(r => setTimeout(r, 1500));
-            setConfirmationId(`ET-${Math.floor(100000 + Math.random() * 900000)}`);
-            setBookingConfirmed(true);
+            const res = await fetch('/api/auth/patients', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: sid }),
+            });
+            const data = await res.json();
+            if (data && data.length > 0) {
+                setPatients(data);
+                setAuthStep("pick-patient");
+                if (data.length === 1) {
+                    setSelectedPatientId(data[0].patientId);
+                }
+            } else {
+                // If no patients found but has account, maybe fallback to self registration or error
+                setError("Could not retrieve patient list.");
+            }
         } catch (err) {
-            setError("Booking failed. Please try again.");
+            setError("Failed to fetch patient list.");
+        } finally {
+            setIsAuthLoading(false);
+        }
+    };
+
+    const handleRegistrationSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedIdentityType || !identityNumber || !firstName || !lastName) return;
+
+        setIsAuthLoading(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mobileNumber,
+                    countryCode: selectedCountry?.code,
+                    countryId: selectedCountry?.id,
+                    identityType: selectedIdentityType.value,
+                    identityNumber,
+                    firstName,
+                    lastName,
+                    email
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setSessionId(data.data.sessionId);
+                const pid = data.data.userId; // Usually userId is the PatientId for root user
+                setSelectedPatientId(pid);
+                confirmFinalBooking(pid);
+            } else {
+                setError(data.message || "Registration failed");
+            }
+        } catch (err) {
+            setError("Registration failed. Please check your data.");
+        } finally {
+            setIsAuthLoading(false);
+        }
+    };
+
+    const confirmFinalBooking = async (pid: number) => {
+        if (!selectedSlot?.timeslotRTId) return;
+
+        setAuthStep("verified");
+        setIsAuthLoading(true);
+        try {
+            const res = await fetch('/api/appointments/reserve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    timeslotRTId: selectedSlot.timeslotRTId,
+                    patientId: pid
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setConfirmationId(data.data.rpValue ? `ET-${data.data.rpValue}` : `ET-${Math.floor(100000 + Math.random() * 900000)}`);
+                setBookingConfirmed(true);
+            } else {
+                setError(data.message || "Real booking failed. The slot might have been taken.");
+                setAuthStep("pick-patient");
+            }
+        } catch (err) {
+            setError("Booking failed. Please check your connection.");
         } finally {
             setIsAuthLoading(false);
         }
@@ -240,11 +359,18 @@ export default function AppointmentBooking() {
 
     return (
         <div className="min-h-screen bg-[#0F172A] text-white p-4 sm:p-8" style={{ maxHeight }}>
-            <div className="max-w-5xl mx-auto space-y-10">
+            <div className="max-w-6xl mx-auto space-y-10">
 
                 {/* Header */}
                 <div className="flex flex-col items-center text-center space-y-4">
-                    <img src="https://etapisd.etabeb.com/Images/logo.png" alt="eTabeb" className="h-12" />
+                    <img
+                        src="/etabeb-logo.png"
+                        alt="eTabeb"
+                        className="h-16 w-auto"
+                        onError={(e) => {
+                            (e.target as HTMLImageElement).src = "https://etapisd.etabeb.com/Images/logo.png";
+                        }}
+                    />
                     <h1 className="text-4xl font-black bg-clip-text text-transparent bg-gradient-to-r from-[#1976B2] to-[#3EBFA5]">
                         Book Appointment
                     </h1>
@@ -252,24 +378,44 @@ export default function AppointmentBooking() {
 
                 {/* Step 1: Doctor */}
                 <div className="bg-[#1E293B] rounded-3xl p-6 shadow-xl border border-[#334155]">
-                    <div className="flex items-center gap-4 mb-6">
-                        <span className="w-10 h-10 bg-[#1976B2] text-white rounded-full flex items-center justify-center font-black">1</span>
-                        <h2 className="text-xl font-bold">Select Doctor</h2>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                        <div className="flex items-center gap-4">
+                            <span className="w-10 h-10 bg-[#1976B2] text-white rounded-full flex items-center justify-center font-black">1</span>
+                            <h2 className="text-xl font-bold">Select Doctor</h2>
+                        </div>
+                        <div className="relative flex-1 max-w-md">
+                            <input
+                                type="text"
+                                placeholder="Search by name or specialty..."
+                                className="w-full bg-[#0F172A] border border-[#334155] rounded-xl py-3 px-10 focus:border-[#1976B2] focus:outline-none text-sm"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                            <svg className="w-4 h-4 text-slate-500 absolute left-4 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {loading ? <div className="col-span-2 text-center py-10 opacity-50">Loading doctors...</div> :
-                            doctors.map((doc) => (
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                        {loading ? <div className="col-span-full text-center py-20 opacity-50">Loading doctors...</div> :
+                            doctors.filter(d =>
+                                d.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                d.specialty.toLowerCase().includes(searchTerm.toLowerCase())
+                            ).map((doc) => (
                                 <button key={doc.id} onClick={() => setSelectedDoctor(doc)}
                                     className={`p-4 rounded-2xl border-2 transition-all flex items-center gap-4 text-left ${selectedDoctor?.id === doc.id ? 'border-[#1976B2] bg-[#1976B2]/10' : 'border-[#334155] hover:border-slate-500'}`}>
-                                    <div className="w-14 h-14 rounded-full bg-slate-700 overflow-hidden flex-shrink-0">
-                                        {doc.image.startsWith('http') ? <img src={doc.image} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-2xl">👨‍⚕️</div>}
+                                    <div className="w-14 h-14 rounded-full bg-slate-700 overflow-hidden flex-shrink-0 relative">
+                                        {doc.image && doc.image.startsWith('http') ?
+                                            <img src={doc.image} className="w-full h-full object-cover" /> :
+                                            <div className="w-full h-full flex items-center justify-center text-2xl">👨‍⚕️</div>}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="font-bold truncate">{doc.name}</div>
-                                        <div className="text-sm text-[#3EBFA5]">{doc.specialty}</div>
-                                        <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
+                                        <div className="font-bold truncate text-sm">{doc.name}</div>
+                                        <div className="text-xs text-[#3EBFA5] truncate">{doc.specialty}</div>
+                                        <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-1">
                                             <span>⭐ {doc.rating.toFixed(1)}</span>
-                                            {doc.price && <span className="font-bold text-white">{doc.price} {doc.currency}</span>}
+                                            <span className="font-bold text-white ml-auto">{doc.price} {doc.currency}</span>
                                         </div>
                                     </div>
                                 </button>
@@ -284,11 +430,11 @@ export default function AppointmentBooking() {
                             <span className="w-10 h-10 bg-[#1976B2] text-white rounded-full flex items-center justify-center font-black">2</span>
                             <h2 className="text-xl font-bold">Available Slots</h2>
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                            {loadingSlots ? <div className="col-span-full py-4 text-center opacity-50">Checking availability...</div> :
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                            {loadingSlots ? <div className="col-span-full py-10 text-center opacity-50">Checking availability...</div> :
                                 timeslots.map((slot) => (
                                     <button key={slot.id} disabled={!slot.available} onClick={() => setSelectedSlot(slot)}
-                                        className={`p-3 rounded-xl font-bold text-sm transition-all ${!slot.available ? 'opacity-20 cursor-not-allowed' :
+                                        className={`p-3 rounded-xl font-bold text-xs transition-all ${!slot.available ? 'opacity-20 cursor-not-allowed' :
                                             selectedSlot?.id === slot.id ? 'bg-[#3EBFA5] text-[#0F172A] scale-105' : 'bg-[#0F172A] border border-[#334155] hover:border-[#3EBFA5]'}`}>
                                         {slot.time.split(' - ')[0]}
                                     </button>
@@ -309,11 +455,11 @@ export default function AppointmentBooking() {
 
                         {authStep === "phone" ? (
                             <form onSubmit={handlePhoneSubmit} className="max-w-md mx-auto space-y-4">
-                                <p className="text-slate-400 text-sm">Please verify your mobile number to confirm your booking at eTabeb securely.</p>
+                                <p className="text-slate-400 text-sm">Please verify your mobile to confirm booking at eTabeb.</p>
                                 <div className="flex h-14 bg-[#0F172A] rounded-2xl border border-[#334155] overflow-hidden focus-within:border-[#1976B2] transition-all">
                                     <select className="bg-transparent px-4 border-r border-[#334155] focus:outline-none text-sm font-bold"
                                         value={selectedCountry?.id} onChange={(e) => setSelectedCountry(countries.find(c => c.id === Number(e.target.value)) || null)}>
-                                        {countries.map(c => <option key={c.id} value={c.id}>{c.flag} {c.code}</option>)}
+                                        {countries.map(c => <option key={c.id} value={c.id} className="bg-[#0F172A]">{c.flag} {c.code}</option>)}
                                     </select>
                                     <input type="tel" placeholder="5XXXXXXXX" required className="flex-1 bg-transparent px-4 focus:outline-none font-bold text-lg"
                                         value={mobileNumber} onChange={(e) => setMobileNumber(e.target.value)} />
@@ -326,23 +472,95 @@ export default function AppointmentBooking() {
                             <form onSubmit={handleOtpSubmit} className="max-w-md mx-auto space-y-6">
                                 <p className="text-slate-400 text-sm">Enter the code sent to <span className="text-white font-bold">{selectedCountry?.code} {mobileNumber}</span></p>
                                 <input type="text" placeholder="● ● ● ●" maxLength={4} required autoFocus
-                                    className="w-full text-center text-4xl font-black tracking-[1em] bg-[#0F172A] border border-[#334155] h-20 rounded-2xl focus:border-[#3EBFA5] transition-all"
+                                    className="w-full text-center text-4xl font-black tracking-[0.5em] bg-[#0F172A] border border-[#334155] h-20 rounded-2xl focus:border-[#3EBFA5] transition-all"
                                     value={otpCode} onChange={(e) => setOtpCode(e.target.value)} />
                                 <button type="submit" disabled={isAuthLoading || otpCode.length < 4}
                                     className="w-full bg-[#3EBFA5] hover:bg-[#32A892] text-[#0F172A] h-14 rounded-2xl font-black text-lg transition-all shadow-lg active:scale-95 disabled:opacity-50">
-                                    {isAuthLoading ? "Verifying..." : "Verify & Book Now"}
+                                    {isAuthLoading ? "Verifying..." : "Verify & Continue"}
                                 </button>
                                 <button type="button" onClick={() => setAuthStep("phone")} className="text-slate-500 text-sm hover:text-white transition-colors">Change Phone Number</button>
+                            </form>
+                        ) : authStep === "pick-patient" ? (
+                            <div className="max-w-md mx-auto space-y-6">
+                                <p className="text-[#3EBFA5] font-bold">Welcome back! Who is the appointment for?</p>
+                                <div className="space-y-3">
+                                    {patients.map(p => (
+                                        <button key={p.patientId} onClick={() => setSelectedPatientId(p.patientId)}
+                                            className={`w-full p-4 rounded-2xl border-2 transition-all text-left flex items-center justify-between ${selectedPatientId === p.patientId ? 'border-[#3EBFA5] bg-[#3EBFA5]/10' : 'border-[#334155] hover:border-slate-500'}`}>
+                                            <div>
+                                                <div className="font-bold">{p.patientName}</div>
+                                                <div className="text-xs text-slate-400">{p.mobileNo}</div>
+                                            </div>
+                                            {selectedPatientId === p.patientId && <div className="w-6 h-6 bg-[#3EBFA5] rounded-full flex items-center justify-center"><svg className="w-4 h-4 text-[#0F172A]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>}
+                                        </button>
+                                    ))}
+                                </div>
+                                <button onClick={() => selectedPatientId && confirmFinalBooking(selectedPatientId)} disabled={isAuthLoading || !selectedPatientId}
+                                    className="w-full bg-[#3EBFA5] hover:bg-[#32A892] text-[#0F172A] h-14 rounded-2xl font-black text-lg transition-all shadow-lg active:scale-95 disabled:opacity-50">
+                                    {isAuthLoading ? "Booking..." : "Confirm Booking"}
+                                </button>
+                            </div>
+                        ) : authStep === "register" ? (
+                            <form onSubmit={handleRegistrationSubmit} className="max-w-xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+                                <div className="md:col-span-2 text-center mb-2">
+                                    <p className="text-[#3EBFA5] font-bold">New to eTabeb? Let's complete your profile.</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-400 ml-1">Identity Type *</label>
+                                    <select required className="w-full h-12 bg-[#0F172A] border border-[#334155] rounded-xl px-4 focus:border-[#1976B2] focus:outline-none"
+                                        value={selectedIdentityType?.value || ''} onChange={(e) => setSelectedIdentityType(identityTypes.find(t => t.value === Number(e.target.value)) || null)}>
+                                        {identityTypes.map(t => <option key={t.value} value={t.value} className="bg-[#0F172A]">{t.text}</option>)}
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-400 ml-1">Identity Number *</label>
+                                    <input type="text" required placeholder="ID Number" className="w-full h-12 bg-[#0F172A] border border-[#334155] rounded-xl px-4 focus:border-[#1976B2] focus:outline-none"
+                                        value={identityNumber} onChange={(e) => setIdentityNumber(e.target.value)} />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-400 ml-1">First Name *</label>
+                                    <input type="text" required placeholder="Ahmed" className="w-full h-12 bg-[#0F172A] border border-[#334155] rounded-xl px-4 focus:border-[#1976B2] focus:outline-none"
+                                        value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs text-slate-400 ml-1">Last Name *</label>
+                                    <input type="text" required placeholder="Mohamed" className="w-full h-12 bg-[#0F172A] border border-[#334155] rounded-xl px-4 focus:border-[#1976B2] focus:outline-none"
+                                        value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                                </div>
+                                <div className="md:col-span-2 space-y-1">
+                                    <label className="text-xs text-slate-400 ml-1">Email (Optional)</label>
+                                    <input type="email" placeholder="ahmed@example.com" className="w-full h-12 bg-[#0F172A] border border-[#334155] rounded-xl px-4 focus:border-[#1976B2] focus:outline-none"
+                                        value={email} onChange={(e) => setEmail(e.target.value)} />
+                                </div>
+                                <button type="submit" disabled={isAuthLoading} className="md:col-span-2 w-full bg-[#3EBFA5] hover:bg-[#32A892] text-[#0F172A] h-14 rounded-2xl font-black text-lg transition-all shadow-lg active:scale-95 disabled:opacity-50 mt-4">
+                                    {isAuthLoading ? "Processing..." : "Complete Registration & Book"}
+                                </button>
                             </form>
                         ) : (
                             <div className="py-10 animate-pulse text-white font-bold flex flex-col items-center gap-4">
                                 <div className="w-12 h-12 border-4 border-[#3EBFA5] border-t-transparent rounded-full animate-spin" />
-                                Processing your booking...
+                                Confirming your booking in real-time...
                             </div>
                         )}
                     </div>
                 )}
             </div>
+
+            <style jsx global>{`
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 6px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: #334155;
+                    border-radius: 10px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background: #475569;
+                }
+            `}</style>
         </div>
     );
 }
