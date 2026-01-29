@@ -14,6 +14,7 @@ const handler = createMcpHandler(async (server) => {
   // Register the appointment widget resource
   server.registerResource(
     appointmentWidget.templateUri,
+    "Widget for medical appointment booking", // Added missing description argument
     {
       name: "eTabeb Appointment Widget",
       mimeType: "text/html",
