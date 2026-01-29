@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import {
     useWidgetProps,
     useMaxHeight,
@@ -14,24 +13,26 @@ type TimeSlot = {
     id: string;
     time: string;
     available: boolean;
+    timeslotRTId?: number;
 };
 
 type Doctor = {
     id: string;
     name: string;
-    nameArabic?: string;
     specialty: string;
-    specialtyArabic?: string;
-    facility?: string;
-    facilityArabic?: string;
     image: string;
     rating: number;
     ratingText?: string;
-    ratingCount?: number;
-    timeslotCount?: number;
     price?: string;
     currency?: string;
     medicalFacilityDoctorSpecialityRTId?: number;
+};
+
+type Country = {
+    id: number;
+    name: string;
+    code: string;
+    flag: string;
 };
 
 type AppointmentData = {
@@ -41,511 +42,303 @@ type AppointmentData = {
     date?: string;
 };
 
+type AuthStep = "phone" | "otp" | "register" | "verified";
+
 export default function AppointmentBooking() {
     const toolOutput = useWidgetProps<AppointmentData>();
     const maxHeight = useMaxHeight() ?? undefined;
     const displayMode = useDisplayMode();
     const requestDisplayMode = useRequestDisplayMode();
 
+    // Booking States
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(
-        toolOutput?.selectedDoctor || null
-    );
+    const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(toolOutput?.selectedDoctor || null);
+    const [timeslots, setTimeslots] = useState<TimeSlot[]>([]);
+    const [loadingSlots, setLoadingSlots] = useState(false);
     const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
-    const [patientName, setPatientName] = useState("");
-    const [patientEmail, setPatientEmail] = useState("");
-    const [patientPhone, setPatientPhone] = useState("");
-    const [reason, setReason] = useState("");
     const [bookingConfirmed, setBookingConfirmed] = useState(false);
     const [confirmationId, setConfirmationId] = useState("");
 
-    // Fetch real doctors from API
+    // Auth States
+    const [countries, setCountries] = useState<Country[]>([]);
+    const [selectedCountry, setSelectedCountry] = useState<Country | null>(null);
+    const [mobileNumber, setMobileNumber] = useState("");
+    const [authStep, setAuthStep] = useState<AuthStep>("phone");
+    const [otpCode, setOtpCode] = useState("");
+    const [signOTPId, setSignOTPId] = useState("");
+    const [sessionId, setSessionId] = useState("");
+    const [isAuthLoading, setIsAuthLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    // Initial Data Fetching
     useEffect(() => {
-        async function fetchDoctors() {
+        async function init() {
             try {
-                setLoading(true);
-                const response = await fetch('/api/doctors');
-                if (!response.ok) {
-                    throw new Error('Failed to fetch doctors');
+                // Fetch Countries
+                const cRes = await fetch('/api/auth/countries');
+                const cData = await cRes.json();
+                setCountries(cData);
+                setSelectedCountry(cData.find((c: any) => c.code === "+966") || cData[0]);
+
+                // Fetch Doctors if not provided
+                if (!toolOutput?.doctors) {
+                    const dRes = await fetch('/api/doctors');
+                    const dData = await dRes.json();
+                    setDoctors(dData.slice(0, 8));
+                } else {
+                    setDoctors(toolOutput.doctors);
                 }
-                const data = await response.json();
-                // Take first 8 doctors for better UI
-                setDoctors(data.slice(0, 8));
-                setError(null);
             } catch (err) {
-                console.error('Error fetching doctors:', err);
-                setError('Failed to load doctors. Please try again.');
-                // Fallback to mock data
-                setDoctors([
-                    {
-                        id: "1",
-                        name: "Dr. Sarah Johnson",
-                        specialty: "Cardiologist",
-                        image: "👩‍⚕️",
-                        rating: 4.9,
-                    },
-                    {
-                        id: "2",
-                        name: "Dr. Michael Chen",
-                        specialty: "General Practitioner",
-                        image: "👨‍⚕️",
-                        rating: 4.8,
-                    },
-                ]);
+                console.error("Init error:", err);
             } finally {
                 setLoading(false);
             }
         }
-
-        // Use doctors from toolOutput if available, otherwise fetch
-        if (toolOutput?.doctors && toolOutput.doctors.length > 0) {
-            setDoctors(toolOutput.doctors);
-            setLoading(false);
-        } else {
-            fetchDoctors();
-        }
+        init();
     }, [toolOutput]);
 
-    const [timeslots, setTimeslots] = useState<TimeSlot[]>([]);
-    const [loadingSlots, setLoadingSlots] = useState(false);
-
-    // Fetch real timeslots when a doctor is selected
+    // Fetch Timeslots when doctor changes
     useEffect(() => {
-        async function fetchTimeslots() {
-            if (!selectedDoctor?.medicalFacilityDoctorSpecialityRTId) {
-                // Use default slots if no ID available
-                setTimeslots([
-                    { id: "1", time: "09:00 - 09:29", available: true },
-                    { id: "2", time: "10:00 - 10:29", available: true },
-                    { id: "3", time: "11:00 - 11:29", available: false },
-                    { id: "4", time: "14:00 - 14:29", available: true },
-                    { id: "5", time: "15:00 - 15:29", available: true },
-                    { id: "6", time: "16:00 - 16:29", available: true },
-                ]);
-                return;
-            }
+        if (!selectedDoctor) return;
 
+        async function fetchSlots() {
+            setLoadingSlots(true);
             try {
-                setLoadingSlots(true);
-                const response = await fetch('/api/timeslots', {
+                const res = await fetch('/api/timeslots', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        medicalFacilityDoctorSpecialityRTId: selectedDoctor.medicalFacilityDoctorSpecialityRTId,
+                        medicalFacilityDoctorSpecialityRTId: selectedDoctor.medicalFacilityDoctorSpecialityRTId
                     }),
                 });
-
-                if (!response.ok) {
-                    throw new Error('Failed to fetch timeslots');
-                }
-
-                const data = await response.json();
-
-                // Group by date and take first 12 slots
-                const slots = data.slice(0, 12).map((slot: any) => ({
-                    id: slot.id.toString(),
-                    time: slot.time,
-                    date: slot.date,
-                    available: slot.available,
-                    timeslotRTId: slot.id,
-                }));
-
-                setTimeslots(slots);
+                const data = await res.json();
+                setTimeslots(data.map((s: any) => ({
+                    id: s.id.toString(),
+                    time: s.time,
+                    available: s.available,
+                    timeslotRTId: s.id
+                })).slice(0, 12));
             } catch (err) {
-                console.error('Error fetching timeslots:', err);
-                // Fallback to default slots
-                setTimeslots([
-                    { id: "1", time: "09:00 - 09:29", available: true },
-                    { id: "2", time: "10:00 - 10:29", available: true },
-                    { id: "3", time: "14:00 - 14:29", available: true },
-                    { id: "4", time: "15:00 - 15:29", available: true },
-                ]);
+                console.error("Slots error:", err);
             } finally {
                 setLoadingSlots(false);
             }
         }
-
-        if (selectedDoctor) {
-            fetchTimeslots();
-        }
+        fetchSlots();
     }, [selectedDoctor]);
 
-    const handleBooking = async () => {
-        if (!selectedDoctor || !selectedSlot || !patientName || !patientEmail) {
-            alert("Please fill in all required fields");
-            return;
+    // Auth Handlers
+    const handlePhoneSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!mobileNumber || !selectedCountry) return;
+
+        setIsAuthLoading(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/auth/send-otp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mobileNumber,
+                    countryId: selectedCountry.id
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setSignOTPId(data.signOTPId);
+                setAuthStep("otp");
+            } else {
+                setError(data.message || "Failed to send OTP");
+            }
+        } catch (err) {
+            setError("Connection error. Please try again.");
+        } finally {
+            setIsAuthLoading(false);
         }
-
-        // Simulate API call
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        const confirmId = `APT-${Date.now()}`;
-        setConfirmationId(confirmId);
-        setBookingConfirmed(true);
-
-        // In real app, you would call your backend API here
-        // const response = await fetch('/api/appointments', {
-        //   method: 'POST',
-        //   body: JSON.stringify({
-        //     doctorId: selectedDoctor.id,
-        //     slotId: selectedSlot.id,
-        //     patientName,
-        //     patientEmail,
-        //     patientPhone,
-        //     reason
-        //   })
-        // });
     };
 
-    const resetBooking = () => {
-        setBookingConfirmed(false);
-        setSelectedDoctor(null);
-        setSelectedSlot(null);
-        setPatientName("");
-        setPatientEmail("");
-        setPatientPhone("");
-        setReason("");
-        setConfirmationId("");
+    const handleOtpSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (otpCode.length < 4) return;
+
+        setIsAuthLoading(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/auth/verify-otp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ otpCode, signOTPId }),
+            });
+            const data = await res.json();
+            if (data.isVerified) {
+                setSessionId(data.sessionId);
+                setAuthStep("verified");
+                // Auto-confirm booking if we have a session
+                confirmFinalBooking(data.sessionId);
+            } else {
+                setError("Invalid verification code");
+            }
+        } catch (err) {
+            setError("Verification failed");
+        } finally {
+            setIsAuthLoading(false);
+        }
+    };
+
+    const confirmFinalBooking = async (sid: string) => {
+        if (!selectedDoctor || !selectedSlot) return;
+
+        setIsAuthLoading(true);
+        try {
+            // Simulate eTabeb BookAppointment API
+            await new Promise(r => setTimeout(r, 1500));
+            setConfirmationId(`ET-${Math.floor(100000 + Math.random() * 900000)}`);
+            setBookingConfirmed(true);
+        } catch (err) {
+            setError("Booking failed. Please try again.");
+        } finally {
+            setIsAuthLoading(false);
+        }
     };
 
     if (bookingConfirmed) {
         return (
-            <div
-                className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 p-6 flex items-center justify-center"
-                style={{ maxHeight }}
-            >
-                <div className="max-w-md w-full bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-8 text-center space-y-6 animate-fadeIn">
-                    <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900 rounded-full flex items-center justify-center mx-auto">
-                        <svg
-                            className="w-10 h-10 text-emerald-600 dark:text-emerald-400"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M5 13l4 4L19 7"
-                            />
+            <div className="min-h-screen bg-[#0F172A] p-6 flex items-center justify-center" style={{ maxHeight }}>
+                <div className="max-w-md w-full bg-[#1E293B] rounded-3xl shadow-2xl p-8 text-center space-y-6 animate-fadeIn border border-[#334155]">
+                    <div className="w-20 h-20 bg-[#3EBFA5]/20 rounded-full flex items-center justify-center mx-auto">
+                        <svg className="w-10 h-10 text-[#3EBFA5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                         </svg>
                     </div>
-
                     <div>
-                        <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
-                            Appointment Confirmed!
-                        </h2>
-                        <p className="text-slate-600 dark:text-slate-300">
-                            Your appointment has been successfully booked
-                        </p>
+                        <h2 className="text-3xl font-black text-white mb-2">Booking Confirmed!</h2>
+                        <p className="text-slate-400">Your appointment is secured with eTabeb</p>
                     </div>
-
-                    <div className="bg-slate-50 dark:bg-slate-700 rounded-xl p-6 space-y-3 text-left">
-                        <div className="flex justify-between items-center">
-                            <span className="text-slate-600 dark:text-slate-400">
-                                Confirmation ID
-                            </span>
-                            <span className="font-mono font-semibold text-slate-900 dark:text-white">
-                                {confirmationId}
-                            </span>
+                    <div className="bg-[#0F172A] rounded-2xl p-6 space-y-4 text-left border border-[#334155]">
+                        <div className="flex justify-between border-b border-[#334155] pb-2">
+                            <span className="text-slate-500 text-sm">Confirmation ID</span>
+                            <span className="text-[#3EBFA5] font-bold">{confirmationId}</span>
                         </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-slate-600 dark:text-slate-400">Doctor</span>
-                            <span className="font-semibold text-slate-900 dark:text-white">
-                                {selectedDoctor?.name}
-                            </span>
+                        <div className="flex justify-between">
+                            <span className="text-slate-500 text-sm">Doctor</span>
+                            <span className="text-white font-medium">{selectedDoctor?.name}</span>
                         </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-slate-600 dark:text-slate-400">Time</span>
-                            <span className="font-semibold text-slate-900 dark:text-white">
-                                {selectedSlot?.time}
-                            </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-slate-600 dark:text-slate-400">
-                                Patient
-                            </span>
-                            <span className="font-semibold text-slate-900 dark:text-white">
-                                {patientName}
-                            </span>
+                        <div className="flex justify-between">
+                            <span className="text-slate-500 text-sm">Time</span>
+                            <span className="text-white font-medium">{selectedSlot?.time}</span>
                         </div>
                     </div>
-
-                    <div className="space-y-3">
-                        <button
-                            onClick={resetBooking}
-                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105"
-                        >
-                            Book Another Appointment
-                        </button>
-                        <Link
-                            href="/"
-                            className="block w-full text-center text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
-                        >
-                            Return to Home
-                        </Link>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    if (loading) {
-        return (
-            <div
-                className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 p-6 flex items-center justify-center"
-                style={{ maxHeight }}
-            >
-                <div className="text-center space-y-4">
-                    <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-                    <p className="text-slate-600 dark:text-slate-300 text-lg">Loading doctors...</p>
+                    <button onClick={() => window.location.reload()} className="w-full bg-[#1976B2] hover:bg-[#1565C0] text-white font-bold py-4 rounded-2xl transition-all shadow-lg">
+                        Done
+                    </button>
                 </div>
             </div>
         );
     }
 
     return (
-        <div
-            className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 p-6"
-            style={{ maxHeight }}
-        >
-            {displayMode !== "fullscreen" && (
-                <button
-                    aria-label="Enter fullscreen"
-                    className="fixed top-4 right-4 z-50 rounded-full bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 shadow-lg ring-1 ring-slate-900/10 dark:ring-white/10 p-2.5 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                    onClick={() => requestDisplayMode("fullscreen")}
-                >
-                    <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={1.5}
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
-                        />
-                    </svg>
-                </button>
-            )}
+        <div className="min-h-screen bg-[#0F172A] text-white p-4 sm:p-8" style={{ maxHeight }}>
+            <div className="max-w-5xl mx-auto space-y-10">
 
-            <div className="max-w-6xl mx-auto space-y-8">
                 {/* Header */}
-                <div className="text-center space-y-3">
-                    <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400">
-                        Book Your Appointment
+                <div className="flex flex-col items-center text-center space-y-4">
+                    <img src="https://etapisd.etabeb.com/Images/logo.png" alt="eTabeb" className="h-12" />
+                    <h1 className="text-4xl font-black bg-clip-text text-transparent bg-gradient-to-r from-[#1976B2] to-[#3EBFA5]">
+                        Book Appointment
                     </h1>
-                    <p className="text-slate-600 dark:text-slate-300 text-lg">
-                        Choose your doctor and preferred time slot
-                    </p>
-                    {error && (
-                        <p className="text-red-600 dark:text-red-400 text-sm">
-                            {error}
-                        </p>
-                    )}
                 </div>
 
-                {/* Step 1: Select Doctor */}
-                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-8 space-y-6">
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
-                        <span className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
-                            1
-                        </span>
-                        Select Your Doctor
-                    </h2>
-
+                {/* Step 1: Doctor */}
+                <div className="bg-[#1E293B] rounded-3xl p-6 shadow-xl border border-[#334155]">
+                    <div className="flex items-center gap-4 mb-6">
+                        <span className="w-10 h-10 bg-[#1976B2] text-white rounded-full flex items-center justify-center font-black">1</span>
+                        <h2 className="text-xl font-bold">Select Doctor</h2>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {doctors.map((doctor) => (
-                            <button
-                                key={doctor.id}
-                                onClick={() => setSelectedDoctor(doctor)}
-                                className={`p-6 rounded-xl border-2 transition-all duration-200 text-left ${selectedDoctor?.id === doctor.id
-                                    ? "border-blue-600 bg-blue-50 dark:bg-blue-900/20 shadow-lg scale-105"
-                                    : "border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md"
-                                    }`}
-                            >
-                                <div className="flex items-start gap-4">
-                                    <div className="w-16 h-16 flex-shrink-0">
-                                        {doctor.image.startsWith('http') ? (
-                                            <img
-                                                src={doctor.image}
-                                                alt={doctor.name}
-                                                className="w-full h-full rounded-full object-cover"
-                                            />
-                                        ) : (
-                                            <div className="text-5xl">{doctor.image || '👨‍⚕️'}</div>
-                                        )}
+                        {loading ? <div className="col-span-2 text-center py-10 opacity-50">Loading doctors...</div> :
+                            doctors.map((doc) => (
+                                <button key={doc.id} onClick={() => setSelectedDoctor(doc)}
+                                    className={`p-4 rounded-2xl border-2 transition-all flex items-center gap-4 text-left ${selectedDoctor?.id === doc.id ? 'border-[#1976B2] bg-[#1976B2]/10' : 'border-[#334155] hover:border-slate-500'}`}>
+                                    <div className="w-14 h-14 rounded-full bg-slate-700 overflow-hidden flex-shrink-0">
+                                        {doc.image.startsWith('http') ? <img src={doc.image} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-2xl">👨‍⚕️</div>}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <h3 className="font-bold text-lg text-slate-900 dark:text-white truncate">
-                                            {doctor.name}
-                                        </h3>
-                                        <p className="text-blue-600 dark:text-blue-400 font-medium text-sm">
-                                            {doctor.specialty}
-                                        </p>
-                                        {doctor.facility && (
-                                            <p className="text-slate-500 dark:text-slate-400 text-xs mt-1 truncate">
-                                                {doctor.facility}
-                                            </p>
-                                        )}
-                                        <div className="flex items-center gap-4 mt-2 text-sm text-slate-600 dark:text-slate-400">
-                                            <span className="flex items-center gap-1">
-                                                ⭐ {doctor.rating > 0 ? doctor.rating.toFixed(1) : doctor.ratingText || 'New'}
-                                            </span>
-                                            {doctor.timeslotCount && (
-                                                <span>{doctor.timeslotCount} slots</span>
-                                            )}
-                                            {doctor.price && doctor.price !== '0' && (
-                                                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                                                    {doctor.price} {doctor.currency}
-                                                </span>
-                                            )}
+                                        <div className="font-bold truncate">{doc.name}</div>
+                                        <div className="text-sm text-[#3EBFA5]">{doc.specialty}</div>
+                                        <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
+                                            <span>⭐ {doc.rating.toFixed(1)}</span>
+                                            {doc.price && <span className="font-bold text-white">{doc.price} {doc.currency}</span>}
                                         </div>
                                     </div>
-                                    {selectedDoctor?.id === doctor.id && (
-                                        <svg
-                                            className="w-6 h-6 text-blue-600 dark:text-blue-400 flex-shrink-0"
-                                            fill="currentColor"
-                                            viewBox="0 0 20 20"
-                                        >
-                                            <path
-                                                fillRule="evenodd"
-                                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                                                clipRule="evenodd"
-                                            />
-                                        </svg>
-                                    )}
-                                </div>
-                            </button>
-                        ))}
+                                </button>
+                            ))}
                     </div>
                 </div>
 
-                {/* Step 2: Select Time Slot */}
+                {/* Step 2: Slot */}
                 {selectedDoctor && (
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-8 space-y-6 animate-fadeIn">
-                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
-                            <span className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
-                                2
-                            </span>
-                            Choose Time Slot
-                        </h2>
-
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                            {loadingSlots ? (
-                                <div className="col-span-full text-center py-8">
-                                    <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-                                    <p className="text-slate-600 dark:text-slate-300 mt-2">Loading slots...</p>
-                                </div>
-                            ) : timeslots.length === 0 ? (
-                                <div className="col-span-full text-center py-8">
-                                    <p className="text-slate-600 dark:text-slate-300">No available slots</p>
-                                </div>
-                            ) : (
-                                timeslots.map((slot: TimeSlot) => (
-                                    <button
-                                        key={slot.id}
-                                        onClick={() => slot.available && setSelectedSlot(slot)}
-                                        disabled={!slot.available}
-                                        className={`p-4 rounded-xl font-semibold transition-all duration-200 ${!slot.available
-                                            ? "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed"
-                                            : selectedSlot?.id === slot.id
-                                                ? "bg-blue-600 text-white shadow-lg scale-105"
-                                                : "bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:shadow-md"
-                                            }`}
-                                    >
-                                        {slot.time}
+                    <div className="bg-[#1E293B] rounded-3xl p-6 shadow-xl border border-[#334155] animate-fadeIn">
+                        <div className="flex items-center gap-4 mb-6">
+                            <span className="w-10 h-10 bg-[#1976B2] text-white rounded-full flex items-center justify-center font-black">2</span>
+                            <h2 className="text-xl font-bold">Available Slots</h2>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                            {loadingSlots ? <div className="col-span-full py-4 text-center opacity-50">Checking availability...</div> :
+                                timeslots.map((slot) => (
+                                    <button key={slot.id} disabled={!slot.available} onClick={() => setSelectedSlot(slot)}
+                                        className={`p-3 rounded-xl font-bold text-sm transition-all ${!slot.available ? 'opacity-20 cursor-not-allowed' :
+                                            selectedSlot?.id === slot.id ? 'bg-[#3EBFA5] text-[#0F172A] scale-105' : 'bg-[#0F172A] border border-[#334155] hover:border-[#3EBFA5]'}`}>
+                                        {slot.time.split(' - ')[0]}
                                     </button>
-                                ))
-                            )}
+                                ))}
                         </div>
                     </div>
                 )}
 
-                {/* Step 3: Patient Information */}
+                {/* Step 3: Secure Auth & Book */}
                 {selectedDoctor && selectedSlot && (
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-8 space-y-6 animate-fadeIn">
-                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
-                            <span className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
-                                3
-                            </span>
-                            Patient Information
-                        </h2>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                                    Full Name *
-                                </label>
-                                <input
-                                    type="text"
-                                    value={patientName}
-                                    onChange={(e) => setPatientName(e.target.value)}
-                                    className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:border-blue-600 dark:focus:border-blue-400 focus:outline-none transition-colors"
-                                    placeholder="John Doe"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                                    Email *
-                                </label>
-                                <input
-                                    type="email"
-                                    value={patientEmail}
-                                    onChange={(e) => setPatientEmail(e.target.value)}
-                                    className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:border-blue-600 dark:focus:border-blue-400 focus:outline-none transition-colors"
-                                    placeholder="john@example.com"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                                    Phone Number
-                                </label>
-                                <input
-                                    type="tel"
-                                    value={patientPhone}
-                                    onChange={(e) => setPatientPhone(e.target.value)}
-                                    className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:border-blue-600 dark:focus:border-blue-400 focus:outline-none transition-colors"
-                                    placeholder="+1 (555) 123-4567"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                                    Reason for Visit
-                                </label>
-                                <input
-                                    type="text"
-                                    value={reason}
-                                    onChange={(e) => setReason(e.target.value)}
-                                    className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:border-blue-600 dark:focus:border-blue-400 focus:outline-none transition-colors"
-                                    placeholder="Annual checkup"
-                                />
-                            </div>
+                    <div className="bg-[#1E293B] rounded-3xl p-8 shadow-2xl border border-[#1976B2]/30 animate-fadeIn text-center space-y-6">
+                        <div className="flex items-center justify-center gap-4">
+                            <span className="w-10 h-10 bg-[#3EBFA5] text-[#0F172A] rounded-full flex items-center justify-center font-black">3</span>
+                            <h2 className="text-2xl font-black">Secure Verification</h2>
                         </div>
 
-                        <div className="flex gap-4 pt-4">
-                            <button
-                                onClick={handleBooking}
-                                className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg"
-                            >
-                                Confirm Appointment
-                            </button>
-                            <Link
-                                href="/"
-                                className="px-8 py-4 rounded-xl border-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-                            >
-                                Cancel
-                            </Link>
-                        </div>
+                        {error && <div className="bg-red-500/10 text-red-400 p-4 rounded-xl text-sm border border-red-500/20">{error}</div>}
+
+                        {authStep === "phone" ? (
+                            <form onSubmit={handlePhoneSubmit} className="max-w-md mx-auto space-y-4">
+                                <p className="text-slate-400 text-sm">Please verify your mobile number to confirm your booking at eTabeb securely.</p>
+                                <div className="flex h-14 bg-[#0F172A] rounded-2xl border border-[#334155] overflow-hidden focus-within:border-[#1976B2] transition-all">
+                                    <select className="bg-transparent px-4 border-r border-[#334155] focus:outline-none text-sm font-bold"
+                                        value={selectedCountry?.id} onChange={(e) => setSelectedCountry(countries.find(c => c.id === Number(e.target.value)) || null)}>
+                                        {countries.map(c => <option key={c.id} value={c.id}>{c.flag} {c.code}</option>)}
+                                    </select>
+                                    <input type="tel" placeholder="5XXXXXXXX" required className="flex-1 bg-transparent px-4 focus:outline-none font-bold text-lg"
+                                        value={mobileNumber} onChange={(e) => setMobileNumber(e.target.value)} />
+                                </div>
+                                <button type="submit" disabled={isAuthLoading} className="w-full bg-[#1976B2] hover:bg-[#1565C0] h-14 rounded-2xl font-black text-lg transition-all shadow-lg active:scale-95 disabled:opacity-50">
+                                    {isAuthLoading ? "Sending Code..." : "Send Verification Code"}
+                                </button>
+                            </form>
+                        ) : authStep === "otp" ? (
+                            <form onSubmit={handleOtpSubmit} className="max-w-md mx-auto space-y-6">
+                                <p className="text-slate-400 text-sm">Enter the code sent to <span className="text-white font-bold">{selectedCountry?.code} {mobileNumber}</span></p>
+                                <input type="text" placeholder="● ● ● ●" maxLength={4} required autoFocus
+                                    className="w-full text-center text-4xl font-black tracking-[1em] bg-[#0F172A] border border-[#334155] h-20 rounded-2xl focus:border-[#3EBFA5] transition-all"
+                                    value={otpCode} onChange={(e) => setOtpCode(e.target.value)} />
+                                <button type="submit" disabled={isAuthLoading || otpCode.length < 4}
+                                    className="w-full bg-[#3EBFA5] hover:bg-[#32A892] text-[#0F172A] h-14 rounded-2xl font-black text-lg transition-all shadow-lg active:scale-95 disabled:opacity-50">
+                                    {isAuthLoading ? "Verifying..." : "Verify & Book Now"}
+                                </button>
+                                <button type="button" onClick={() => setAuthStep("phone")} className="text-slate-500 text-sm hover:text-white transition-colors">Change Phone Number</button>
+                            </form>
+                        ) : (
+                            <div className="py-10 animate-pulse text-white font-bold flex flex-col items-center gap-4">
+                                <div className="w-12 h-12 border-4 border-[#3EBFA5] border-t-transparent rounded-full animate-spin" />
+                                Processing your booking...
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
