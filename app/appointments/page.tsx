@@ -247,7 +247,7 @@ export default function AppointmentBooking() {
             if (data.isVerified) {
                 if (data.hasAccount) {
                     setSessionId(data.sessionId);
-                    fetchPatients(data.sessionId);
+                    fetchPatients(data.sessionId, data.userId);
                 } else {
                     setAuthStep("register");
                 }
@@ -261,13 +261,16 @@ export default function AppointmentBooking() {
         }
     };
 
-    const fetchPatients = async (sid: string) => {
+    const fetchPatients = async (sid: string | null, uid?: number) => {
         setIsAuthLoading(true);
         try {
             const res = await fetch('/api/auth/patients', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sessionId: sid }),
+                body: JSON.stringify({
+                    sessionId: sid,
+                    userId: uid
+                }),
             });
             const data = await res.json();
             if (data && data.length > 0) {
