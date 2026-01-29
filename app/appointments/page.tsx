@@ -102,7 +102,7 @@ export default function AppointmentBooking() {
     const [lastName, setLastName] = useState("");
     const [email, setEmail] = useState("");
 
-    // Initial Data Fetching
+    // Initial Data Fetching + Handle URL parameters for widget
     useEffect(() => {
         async function init() {
             try {
@@ -111,6 +111,32 @@ export default function AppointmentBooking() {
                 const cData = await cRes.json();
                 setCountries(cData);
                 setSelectedCountry(cData.find((c: any) => c.code === "+966") || cData[0]);
+
+                // Check for URL parameters (from ChatGPT widget)
+                const params = new URLSearchParams(window.location.search);
+                const skipDoctorSelection = params.get('skipDoctorSelection');
+                const doctorId = params.get('doctorId');
+                const doctorName = params.get('doctorName');
+                const facility = params.get('facility');
+
+                if (skipDoctorSelection === 'true' && doctorId && doctorName) {
+                    // Pre-select doctor from URL parameters
+                    const preselectedDoctor: Doctor = {
+                        id: doctorId,
+                        doctorId: doctorId,
+                        name: doctorName,
+                        specialty: '',
+                        facility: facility || '',
+                        image: '',
+                        rating: 0,
+                    };
+                    setSelectedDoctor(preselectedDoctor);
+                    console.log('✅ Doctor pre-selected from widget:', preselectedDoctor);
+                    
+                    // Skip directly to authentication
+                    // Don't load doctors list - go straight to auth
+                    setLoading(false);
+                }
             } catch (err) {
                 console.error("Init error:", err);
             }
@@ -118,9 +144,16 @@ export default function AppointmentBooking() {
         init();
     }, []);
 
-    // Load all doctors once on mount
+    // Load all doctors once on mount (only if not from widget)
     useEffect(() => {
         async function loadAllDoctors() {
+            // Check if doctor is already pre-selected from URL
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('skipDoctorSelection') === 'true') {
+                console.log('⏭️ Skipping doctor load - using pre-selected doctor from widget');
+                return;
+            }
+
             setLoading(true);
             try {
                 console.log('📋 Loading all doctors from API...');
