@@ -85,7 +85,7 @@ function BookingContent() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    mobileNo: mobileNumber,
+                    mobileNumber: mobileNumber,
                     countryId: selectedCountry.id
                 })
             });
