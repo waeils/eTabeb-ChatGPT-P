@@ -217,9 +217,9 @@ app.post('/mcp', async (req, res) => {
               inputSchema: {
                 type: 'object',
                 properties: {
-                  doctorId: {
+                  timeslotId: {
                     type: 'string',
-                    description: 'Doctor ID from search results',
+                    description: 'Timeslot ID for the appointment',
                   },
                   doctorName: {
                     type: 'string',
@@ -229,8 +229,12 @@ app.post('/mcp', async (req, res) => {
                     type: 'string',
                     description: 'Medical facility name',
                   },
+                  dateTime: {
+                    type: 'string',
+                    description: 'Appointment date and time (e.g., "Monday, Feb 3, 2026 - 10:00 AM")',
+                  },
                 },
-                required: ['doctorId', 'doctorName', 'facilityName'],
+                required: ['timeslotId', 'doctorName', 'facilityName', 'dateTime'],
               },
               _meta: {
                 'openai/outputTemplate': 'resource://booking-widget',
@@ -246,7 +250,7 @@ app.post('/mcp', async (req, res) => {
     } else if (request.method === 'tools/call') {
       const { name, arguments: args } = request.params;
       if (name === 'open_booking') {
-        const { doctorId, doctorName, facilityName } = args;
+        const { timeslotId, doctorName, facilityName, dateTime } = args;
         response = {
           jsonrpc: '2.0',
           id: request.id,
@@ -254,7 +258,7 @@ app.post('/mcp', async (req, res) => {
             content: [
               {
                 type: 'text',
-                text: `Opening booking interface for Dr. ${doctorName} at ${facilityName}. You can now complete your booking securely.`,
+                text: `Opening booking for Dr. ${doctorName} at ${facilityName} on ${dateTime}. Complete your booking securely in the widget.`,
               },
             ],
             isError: false,

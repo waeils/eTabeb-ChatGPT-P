@@ -58,19 +58,19 @@
     const loading = document.querySelector('.loading');
     const baseUrl = '{{BOOKING_APP_URL}}';
     
-    // Get doctor info from ChatGPT tool output
+    // Get appointment info from ChatGPT tool output
     const toolOutput = window.openai?.toolOutput || {};
-    const { doctorId, doctorName, facilityName } = toolOutput;
+    const { timeslotId, doctorName, facilityName, dateTime } = toolOutput;
     
-    // Build URL with doctor pre-selected (skip doctor selection step)
+    // Build URL for simplified booking page
     const params = new URLSearchParams({
-      doctorId: doctorId || '',
+      timeslotId: timeslotId || '',
       doctorName: doctorName || '',
       facility: facilityName || '',
-      skipDoctorSelection: 'true'
+      dateTime: dateTime || ''
     });
     
-    iframe.src = `${baseUrl}/appointments?${params.toString()}`;
+    iframe.src = `${baseUrl}/book?${params.toString()}`;
     
     iframe.onload = () => {
       loading.style.display = 'none';
