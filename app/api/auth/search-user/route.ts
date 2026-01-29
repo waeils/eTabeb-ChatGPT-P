@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { mobileNumber } = body;
+        const { mobileNumber, countryId } = body;
 
         if (!mobileNumber) {
             return NextResponse.json(
@@ -12,14 +12,18 @@ export async function POST(request: Request) {
             );
         }
 
+        console.log('🔍 Searching user with mobile:', mobileNumber);
+
         // Call real eTabeb SearchUser API to get user session
-        const response = await fetch('https://etapisd.etabeb.com/api/AI/SearchUser', {
+        const endpoint = 'https://etapisd.etabeb.com/api/AI/SearchUser';
+
+        const response = await fetch(endpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                loginId: mobileNumber // As per user screenshot: loginId maps to cellNo
+                loginId: mobileNumber,  // API expects loginId, not mobileNo
             }),
         });
 

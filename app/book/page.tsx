@@ -128,15 +128,16 @@ function BookingContent() {
             });
             const data = await res.json();
 
-            if (data.verified) {
-                const verifiedSessionId = data.sessionId || sessionId;
-                setSessionId(verifiedSessionId);
+            if (data.isVerified) {
+                // Use the original sessionId from search-user, not from verify-otp
+                // verify-otp returns signOTPId as sessionId, which is wrong for patient list
+                const userSessionId = sessionId; // Keep the search-user sessionId
 
                 // Fetch patients
                 const patientsRes = await fetch('/api/auth/patients', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sessionId: verifiedSessionId })
+                    body: JSON.stringify({ sessionId: userSessionId })
                 });
                 const patientsData = await patientsRes.json();
 

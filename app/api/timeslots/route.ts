@@ -41,6 +41,7 @@ export async function POST(request: Request) {
 
         // Transform to minimal fields for ChatGPT (avoid ResponseTooLargeError)
         const transformedTimeslots = limitedSlots.map((slot: any) => ({
+            timeslotRTId: slot.timeslotRTId,  // CRITICAL: needed for booking
             date: slot.timeslotDateStart,
             time: `${slot.timeslotTimeStart} - ${slot.timeslotTimeEnd}`,
             available: true,
