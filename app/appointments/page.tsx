@@ -285,7 +285,9 @@ export default function AppointmentBooking() {
                 setAuthStep("register");
             }
         } catch (err) {
-            setError("Failed to fetch patient list.");
+            console.error("Failed to fetch patient list:", err);
+            // Fallback to registration if patient list retrieval fails
+            setAuthStep("register");
         } finally {
             setIsAuthLoading(false);
         }
