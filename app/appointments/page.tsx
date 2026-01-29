@@ -100,7 +100,8 @@ export default function AppointmentBooking() {
 
     // Fetch Timeslots when doctor changes
     useEffect(() => {
-        if (!selectedDoctor) return;
+        const doctorId = selectedDoctor?.medicalFacilityDoctorSpecialityRTId;
+        if (!doctorId) return;
 
         async function fetchSlots() {
             setLoadingSlots(true);
@@ -109,7 +110,7 @@ export default function AppointmentBooking() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        medicalFacilityDoctorSpecialityRTId: selectedDoctor.medicalFacilityDoctorSpecialityRTId
+                        medicalFacilityDoctorSpecialityRTId: doctorId
                     }),
                 });
                 const data = await res.json();
