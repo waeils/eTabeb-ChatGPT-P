@@ -14,6 +14,7 @@ type TimeSlot = {
     id: string;
     time: string;
     available: boolean;
+    date: string;
     timeslotRTId?: number;
 };
 
@@ -75,6 +76,7 @@ export default function AppointmentBooking() {
     const [timeslots, setTimeslots] = useState<TimeSlot[]>([]);
     const [loadingSlots, setLoadingSlots] = useState(false);
     const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
+    const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [bookingConfirmed, setBookingConfirmed] = useState(false);
     const [confirmationId, setConfirmationId] = useState("");
     const [searchTerm, setSearchTerm] = useState("");
@@ -159,12 +161,20 @@ export default function AppointmentBooking() {
                     }),
                 });
                 const data = await res.json();
-                setTimeslots(data.map((s: any) => ({
-                    id: s.id.toString(),
+                const slots = data.map((s: any) => ({
+                    id: s.id?.toString() || s.timeslotRTId?.toString(),
                     time: s.time,
+                    date: s.date,
                     available: s.available,
-                    timeslotRTId: s.id
-                })));
+                    timeslotRTId: s.id || s.timeslotRTId
+                }));
+                setTimeslots(slots);
+
+                // Auto-select first date with available slots
+                if (slots.length > 0) {
+                    const uniqueDates = Array.from(new Set(slots.map((s: any) => s.date))).sort() as string[];
+                    setSelectedDate(uniqueDates[0]);
+                }
             } catch (err) {
                 console.error("Slots error:", err);
             } finally {
@@ -460,15 +470,28 @@ export default function AppointmentBooking() {
                             <span className="w-10 h-10 bg-[#1976B2] text-white rounded-full flex items-center justify-center font-black">2</span>
                             <h2 className="text-xl font-bold">Available Slots</h2>
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
-                            {loadingSlots ? <div className="col-span-full py-10 text-center opacity-50">Checking availability...</div> :
-                                timeslots.map((slot) => (
-                                    <button key={slot.id} disabled={!slot.available} onClick={() => setSelectedSlot(slot)}
-                                        className={`p-3 rounded-xl font-bold text-xs transition-all ${!slot.available ? 'opacity-20 cursor-not-allowed' :
-                                            selectedSlot?.id === slot.id ? 'bg-[#3EBFA5] text-[#0F172A] scale-105' : 'bg-[#0F172A] border border-[#334155] hover:border-[#3EBFA5]'}`}>
-                                        {slot.time.split(' - ')[0]}
+                        <div className="flex flex-col gap-6">
+                            {/* Date Selector */}
+                            <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                                {Array.from(new Set(timeslots.map(s => s.date))).sort().map((date) => (
+                                    <button key={date} onClick={() => { setSelectedDate(date); setSelectedSlot(null); }}
+                                        className={`px-6 py-3 rounded-xl font-bold text-sm whitespace-nowrap transition-all border-2 ${selectedDate === date ? 'bg-[#1976B2] border-[#1976B2] text-white' : 'bg-[#0F172A] border-[#334155] text-slate-400 hover:border-slate-500'}`}>
+                                        {date ? new Date(date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Unknown'}
                                     </button>
                                 ))}
+                            </div>
+
+                            {/* Time Selector */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                                {loadingSlots ? <div className="col-span-full py-10 text-center opacity-50">Checking availability...</div> :
+                                    timeslots.filter(s => s.date === selectedDate).map((slot) => (
+                                        <button key={slot.id} disabled={!slot.available} onClick={() => setSelectedSlot(slot)}
+                                            className={`p-3 rounded-xl font-bold text-xs transition-all ${!slot.available ? 'opacity-20 cursor-not-allowed' :
+                                                selectedSlot?.id === slot.id ? 'bg-[#3EBFA5] text-[#0F172A] scale-105' : 'bg-[#0F172A] border border-[#334155] hover:border-[#3EBFA5]'}`}>
+                                            {slot.time.split(' - ')[0]}
+                                        </button>
+                                    ))}
+                            </div>
                         </div>
                     </div>
                 )}
