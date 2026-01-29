@@ -280,8 +280,9 @@ export default function AppointmentBooking() {
                     setSelectedPatientId(data[0].patientId);
                 }
             } else {
-                // If no patients found but has account, maybe fallback to self registration or error
-                setError("Could not retrieve patient list.");
+                // If no patients found but the user has an account, 
+                // redirect to registration to allow them to create their first patient profile.
+                setAuthStep("register");
             }
         } catch (err) {
             setError("Failed to fetch patient list.");
