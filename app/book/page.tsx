@@ -19,12 +19,13 @@ type Patient = {
 function BookingContent() {
     const searchParams = useSearchParams();
     
-    // URL Parameters
+    // URL Parameters - all provided by Custom GPT
     const timeslotId = searchParams.get('timeslotId') || '';
-    
-    // Appointment details fetched from API
-    const [appointmentDetails, setAppointmentDetails] = useState<any>(null);
-    const [loadingDetails, setLoadingDetails] = useState(true);
+    const doctorName = searchParams.get('doctorName') || '';
+    const specialty = searchParams.get('specialty') || '';
+    const facility = searchParams.get('facility') || '';
+    const dateTime = searchParams.get('dateTime') || '';
+    const price = searchParams.get('price') || '';
     
     // Auth States
     const [countries, setCountries] = useState<Country[]>([]);
@@ -39,37 +40,6 @@ function BookingContent() {
     const [error, setError] = useState<string | null>(null);
     const [step, setStep] = useState<'phone' | 'otp' | 'patient' | 'confirmed'>('phone');
     const [confirmationMessage, setConfirmationMessage] = useState("");
-
-    // Fetch appointment details from timeslotId
-    useEffect(() => {
-        async function fetchAppointmentDetails() {
-            if (!timeslotId) {
-                setLoadingDetails(false);
-                return;
-            }
-
-            try {
-                const res = await fetch('/api/timeslot-details', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ timeslotId })
-                });
-                const details = await res.json();
-                
-                if (details && !details.error) {
-                    setAppointmentDetails(details);
-                    console.log('✅ Appointment details fetched:', details);
-                } else {
-                    console.error('Failed to fetch appointment details:', details.error);
-                }
-            } catch (err) {
-                console.error('Error fetching appointment details:', err);
-            } finally {
-                setLoadingDetails(false);
-            }
-        }
-        fetchAppointmentDetails();
-    }, [timeslotId]);
 
     // Load countries
     useEffect(() => {
@@ -263,48 +233,40 @@ function BookingContent() {
                 </div>
 
                 {/* Appointment Summary */}
-                {loadingDetails ? (
-                    <div className="bg-gradient-to-br from-blue-50 to-teal-50 rounded-xl p-4 mb-6 border border-[#1976B2]/20">
-                        <div className="text-center text-gray-500">Loading appointment details...</div>
+                <div className="bg-gradient-to-br from-blue-50 to-teal-50 rounded-xl p-4 mb-6 border border-[#1976B2]/20">
+                    <div className="flex items-center mb-3">
+                        <svg className="w-5 h-5 text-[#1976B2] mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <h2 className="font-semibold text-gray-900">Appointment Details</h2>
                     </div>
-                ) : appointmentDetails ? (
-                    <div className="bg-gradient-to-br from-blue-50 to-teal-50 rounded-xl p-4 mb-6 border border-[#1976B2]/20">
-                        <div className="flex items-center mb-3">
-                            <svg className="w-5 h-5 text-[#1976B2] mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            <h2 className="font-semibold text-gray-900">Appointment Details</h2>
+                    <div className="space-y-2 text-sm">
+                        <div className="flex justify-between items-start">
+                            <span className="text-gray-600">Doctor:</span>
+                            <span className="font-medium text-gray-900 text-right">{doctorName}</span>
                         </div>
-                        <div className="space-y-2 text-sm">
-                            <div className="flex justify-between items-start">
-                                <span className="text-gray-600">Doctor:</span>
-                                <span className="font-medium text-gray-900 text-right">{appointmentDetails.doctorName}</span>
-                            </div>
+                        {specialty && (
                             <div className="flex justify-between items-start">
                                 <span className="text-gray-600">Specialty:</span>
-                                <span className="font-medium text-gray-700 text-right">{appointmentDetails.specialty}</span>
+                                <span className="font-medium text-gray-700 text-right">{specialty}</span>
                             </div>
-                            <div className="flex justify-between items-start">
-                                <span className="text-gray-600">Facility:</span>
-                                <span className="font-medium text-gray-900 text-right">{appointmentDetails.facility}</span>
-                            </div>
-                            <div className="flex justify-between items-start">
-                                <span className="text-gray-600">Date & Time:</span>
-                                <span className="font-medium text-[#3EBFA5] text-right">{appointmentDetails.dateTime}</span>
-                            </div>
-                            {appointmentDetails.price && (
-                                <div className="flex justify-between items-start">
-                                    <span className="text-gray-600">Price:</span>
-                                    <span className="font-medium text-gray-900 text-right">{appointmentDetails.price} {appointmentDetails.currency}</span>
-                                </div>
-                            )}
+                        )}
+                        <div className="flex justify-between items-start">
+                            <span className="text-gray-600">Facility:</span>
+                            <span className="font-medium text-gray-900 text-right">{facility}</span>
                         </div>
+                        <div className="flex justify-between items-start">
+                            <span className="text-gray-600">Date & Time:</span>
+                            <span className="font-medium text-[#3EBFA5] text-right">{dateTime}</span>
+                        </div>
+                        {price && (
+                            <div className="flex justify-between items-start">
+                                <span className="text-gray-600">Price:</span>
+                                <span className="font-medium text-gray-900 text-right">{price} SAR</span>
+                            </div>
+                        )}
                     </div>
-                ) : (
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
-                        Invalid timeslot ID
-                    </div>
-                )}
+                </div>
 
                 {/* Error Message */}
                 {error && (
@@ -435,9 +397,9 @@ function BookingContent() {
                         <p className="text-gray-600 mb-4">{confirmationMessage}</p>
                         <div className="bg-gradient-to-br from-blue-50 to-teal-50 rounded-xl p-4 text-left border border-[#3EBFA5]/30">
                             <p className="text-sm text-gray-700 space-y-1">
-                                <span className="block"><strong className="text-[#1976B2]">Doctor:</strong> {appointmentDetails?.doctorName}</span>
-                                <span className="block"><strong className="text-[#1976B2]">Facility:</strong> {appointmentDetails?.facility}</span>
-                                <span className="block"><strong className="text-[#1976B2]">Date & Time:</strong> {appointmentDetails?.dateTime}</span>
+                                <span className="block"><strong className="text-[#1976B2]">Doctor:</strong> {doctorName}</span>
+                                <span className="block"><strong className="text-[#1976B2]">Facility:</strong> {facility}</span>
+                                <span className="block"><strong className="text-[#1976B2]">Date & Time:</strong> {dateTime}</span>
                             </p>
                         </div>
                         <p className="text-xs text-gray-500 mt-4">Powered by eTabeb</p>
