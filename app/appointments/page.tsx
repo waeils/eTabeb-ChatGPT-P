@@ -100,49 +100,10 @@ export default function AppointmentBooking() {
     const [lastName, setLastName] = useState("");
     const [email, setEmail] = useState("");
 
-    // Search Debounce & API Call
-    useEffect(() => {
-        if (!searchTerm) {
-            // If empty, reset to initial doctors list (re-fetch all if needed)
-            const fetchAll = async () => {
-                const res = await fetch('/api/doctors', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ CityId: 1 }) // Assuming 1 is Jeddah/Operating city
-                });
-                const data = await res.json();
-                setDoctors(data);
-            };
-            fetchAll();
-            return;
-        }
-
-        const delayDebounceFn = setTimeout(async () => {
-            setLoading(true);
-            try {
-                const res = await fetch('/api/doctors', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        SearchText: searchTerm,
-                        CityId: 1
-                    }),
-                });
-                const data = await res.json();
-                setDoctors(data);
-            } catch (err) {
-                console.error("Search error:", err);
-            } finally {
-                setLoading(false);
-            }
-        }, 500);
-
-        return () => clearTimeout(delayDebounceFn);
-    }, [searchTerm]);
-
     // Initial Data Fetching
     useEffect(() => {
         async function init() {
+            setLoading(true);
             try {
                 // Fetch Countries
                 const cRes = await fetch('/api/auth/countries');
@@ -151,6 +112,7 @@ export default function AppointmentBooking() {
                 setSelectedCountry(cData.find((c: any) => c.code === "+966") || cData[0]);
 
                 // Initial fetch for doctors (Jeddah by default)
+                // The user mentioned the API is fixed to return all doctors
                 const dRes = await fetch('/api/doctors', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -166,6 +128,20 @@ export default function AppointmentBooking() {
         }
         init();
     }, []);
+
+    // Filtered Doctors (Client-side for instant feedback)
+    const filteredDoctors = doctors.filter(doc => {
+        if (!searchTerm) return true;
+        const s = searchTerm.toLowerCase();
+        return (
+            doc.name.toLowerCase().includes(s) ||
+            (doc.nameArabic && doc.nameArabic.toLowerCase().includes(s)) ||
+            doc.specialty.toLowerCase().includes(s) ||
+            (doc.specialtyArabic && doc.specialtyArabic.toLowerCase().includes(s)) ||
+            doc.facility.toLowerCase().includes(s) ||
+            (doc.facilityArabic && doc.facilityArabic.toLowerCase().includes(s))
+        );
+    });
 
     // Fetch Timeslots when doctor changes
     useEffect(() => {
@@ -450,8 +426,8 @@ export default function AppointmentBooking() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-                        {loading ? <div className="col-span-full text-center py-20 opacity-50">Searching doctors...</div> :
-                            doctors.length > 0 ? doctors.map((doc) => (
+                        {loading ? <div className="col-span-full text-center py-20 opacity-50">Loading doctors...</div> :
+                            filteredDoctors.length > 0 ? filteredDoctors.map((doc) => (
                                 <button key={doc.id} onClick={() => setSelectedDoctor(doc)}
                                     className={`p-4 rounded-2xl border-2 transition-all flex items-center gap-4 text-left ${selectedDoctor?.id === doc.id ? 'border-[#1976B2] bg-[#1976B2]/10' : 'border-[#334155] hover:border-slate-500'}`}>
                                     <div className="w-14 h-14 rounded-full bg-slate-700 overflow-hidden flex-shrink-0 relative">
