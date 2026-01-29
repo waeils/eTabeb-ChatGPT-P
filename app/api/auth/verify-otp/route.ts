@@ -3,9 +3,9 @@ import { NextResponse } from 'next/server';
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { otpCode, signOTPId } = body;
+        const { signOTPCode, signOTPId } = body;
 
-        if (!otpCode || !signOTPId) {
+        if (!signOTPCode || !signOTPId) {
             return NextResponse.json(
                 { error: 'OTP code and sign OTP ID are required' },
                 { status: 400 }
@@ -21,9 +21,9 @@ export async function POST(request: Request) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                signOTPId: signOTPId,      // Correct parameter name (from rpValue of send OTP)
-                signOTPCode: otpCode,       // Correct parameter name
-                isSystem: 0,                // Static value as per your screenshot
+                signOTPId: signOTPId,
+                signOTPCode: signOTPCode,
+                isSystem: 0,
             }),
         });
 

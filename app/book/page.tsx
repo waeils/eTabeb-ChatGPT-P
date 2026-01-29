@@ -70,7 +70,7 @@ function BookingContent() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    mobileNo: mobileNumber,
+                    mobileNumber: mobileNumber,
                     countryId: selectedCountry.id
                 })
             });
@@ -121,7 +121,7 @@ function BookingContent() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     signOTPId,
-                    otpCode,
+                    signOTPCode: otpCode,
                     mobileNo: mobileNumber,
                     countryId: selectedCountry?.id
                 })
