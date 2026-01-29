@@ -18,9 +18,11 @@ type TimeSlot = {
 };
 
 type Doctor = {
-    id: string;
+    id: string; // medicalFacilityDoctorSpecialityRTId
+    doctorId: string;
     name: string;
     specialty: string;
+    facility: string;
     image: string;
     rating: number;
     ratingText?: string;
@@ -371,9 +373,16 @@ export default function AppointmentBooking() {
                             (e.target as HTMLImageElement).src = "https://etapisd.etabeb.com/Images/logo.png";
                         }}
                     />
-                    <h1 className="text-4xl font-black bg-clip-text text-transparent bg-gradient-to-r from-[#1976B2] to-[#3EBFA5]">
-                        Book Appointment
-                    </h1>
+                    <div className="space-y-2">
+                        <h1 className="text-4xl font-black bg-clip-text text-transparent bg-gradient-to-r from-[#1976B2] to-[#3EBFA5]">
+                            Book Appointment
+                        </h1>
+                        <div className="flex items-center justify-center gap-2">
+                            <span className="px-3 py-1 bg-[#3EBFA5]/20 text-[#3EBFA5] text-xs font-bold rounded-full border border-[#3EBFA5]/30">
+                                📍 Operating in Jeddah
+                            </span>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Step 1: Doctor */}
@@ -386,7 +395,7 @@ export default function AppointmentBooking() {
                         <div className="relative flex-1 max-w-md">
                             <input
                                 type="text"
-                                placeholder="Search by name or specialty..."
+                                placeholder="Search by name, specialty, or hospital..."
                                 className="w-full bg-[#0F172A] border border-[#334155] rounded-xl py-3 px-10 focus:border-[#1976B2] focus:outline-none text-sm"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -401,7 +410,8 @@ export default function AppointmentBooking() {
                         {loading ? <div className="col-span-full text-center py-20 opacity-50">Loading doctors...</div> :
                             doctors.filter(d =>
                                 d.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                d.specialty.toLowerCase().includes(searchTerm.toLowerCase())
+                                d.specialty.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                d.facility.toLowerCase().includes(searchTerm.toLowerCase())
                             ).map((doc) => (
                                 <button key={doc.id} onClick={() => setSelectedDoctor(doc)}
                                     className={`p-4 rounded-2xl border-2 transition-all flex items-center gap-4 text-left ${selectedDoctor?.id === doc.id ? 'border-[#1976B2] bg-[#1976B2]/10' : 'border-[#334155] hover:border-slate-500'}`}>
@@ -413,7 +423,8 @@ export default function AppointmentBooking() {
                                     <div className="flex-1 min-w-0">
                                         <div className="font-bold truncate text-sm">{doc.name}</div>
                                         <div className="text-xs text-[#3EBFA5] truncate">{doc.specialty}</div>
-                                        <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-1">
+                                        <div className="text-[11px] text-slate-400 truncate mt-0.5">🏥 {doc.facility}</div>
+                                        <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-2">
                                             <span>⭐ {doc.rating.toFixed(1)}</span>
                                             <span className="font-bold text-white ml-auto">{doc.price} {doc.currency}</span>
                                         </div>

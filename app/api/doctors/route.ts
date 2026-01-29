@@ -21,7 +21,8 @@ export async function POST(request: Request) {
 
         // Transform the API response to match our app's format
         const transformedDoctors = doctors.map((doctor: any) => ({
-            id: doctor.doctorId.toString(),
+            id: doctor.medicalFacilityDoctorSpecialityRTId.toString(),
+            doctorId: doctor.doctorId.toString(),
             name: doctor.doctorName.trim(),
             nameArabic: doctor.doctorNameOTE,
             specialty: doctor.medicalSpecialityText,
@@ -68,7 +69,8 @@ export async function GET() {
 
         // Transform the API response
         const transformedDoctors = doctors.map((doctor: any) => ({
-            id: doctor.doctorId.toString(),
+            id: doctor.medicalFacilityDoctorSpecialityRTId.toString(),
+            doctorId: doctor.doctorId.toString(),
             name: doctor.doctorName.trim(),
             nameArabic: doctor.doctorNameOTE,
             specialty: doctor.medicalSpecialityText,
