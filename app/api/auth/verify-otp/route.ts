@@ -37,17 +37,37 @@ export async function POST(request: Request) {
         // Check rpStatus for verification success (>= 1 means verified)
         const isVerified = data.rpStatus && data.rpStatus >= 1;
 
-        // If verified and has any form of identifier, user is already registered
-        const hasAccount = isVerified && (!!data.sessionId || !!data.UserSessionId || (data.rpValue && data.rpValue > 0));
+        // Exhaustive search for session identifiers in the response
+        const findSid = (obj: any): any => {
+            if (!obj || typeof obj !== 'object') return null;
+            const keys = ['sessionId', 'UserSessionId', 'UsersSessionId', 'sessionID', 'd_sessionid', 'UserSessionID', 'usersessionid', 'SessionId', 'UsersSessionID'];
+            for (const key of keys) {
+                if (obj[key]) return obj[key];
+            }
+            if (obj.data) return findSid(obj.data);
+            return null;
+        };
 
-        console.log('Account Detection:', { isVerified, hasAccount, sid: !!data.sessionId, usid: !!data.UserSessionId, uid: data.rpValue });
+        const sid = findSid(data) || data.rpValue;
+
+        // If verified and has any form of identifier, user is already registered
+        const hasAccount = isVerified && (!!sid || (data.rpValue && data.rpValue > 0));
+
+        console.log('Account Detection (Final):', {
+            isVerified,
+            hasAccount,
+            sid,
+            foundSid: !!sid,
+            uid: data.rpValue,
+            keysInRange: Object.keys(data)
+        });
 
         return NextResponse.json({
             isVerified,
             hasAccount,
             rpStatus: data.rpStatus,
             message: isVerified ? 'OTP verified successfully' : (data.rpMsg || 'Invalid OTP code'),
-            sessionId: data.sessionId || data.UserSessionId,
+            sessionId: sid,
             userId: data.rpValue,
             data, // Pass full object so patients API can find everything
         });

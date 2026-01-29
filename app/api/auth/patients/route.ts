@@ -5,38 +5,43 @@ export async function POST(request: Request) {
         const body = await request.json();
         console.log('Patients Request Body:', JSON.stringify(body));
 
-        const sessionId = body.sessionId || body.data?.sessionId || body.data?.UserSessionId || body.signOTPId;
-        const userId = body.userId || body.data?.userId || body.data?.rpValue || body.userId;
+        // Extract the ID from all possible sources
+        const rawData = body.data || {};
+        const rawId = body.sessionId || body.userId || rawData.sessionId || rawData.rpValue || rawData.UserSessionId;
+        const sessionId = typeof rawId === 'string' ? parseInt(rawId) : rawId;
 
-        // Try with various possible parameter names
+        // Payloads to try, starting with the exact Postman format
         const payloads = [
-            { SessionId: sessionId, isSystem: 0 },
-            { SessionId: userId?.toString(), isSystem: 0 },
-            { UserId: userId, isSystem: 0 }
-        ];
+            { "SessionId": sessionId },
+            { "SessionId": sessionId?.toString() },
+            { "SessionId": parseInt(body.userId) },
+            { "SessionId": body.userId }
+        ].filter(p => p.SessionId !== undefined && p.SessionId !== null && !isNaN(Number(p.SessionId)));
 
         let patients: any[] = [];
         const endpoint = 'https://etapisd.etabeb.com/api/AI/UserPatientList4Reserve';
 
         for (const payload of payloads) {
-            if (!payload.SessionId && !payload.UserId) continue;
-
             console.log('Trying Patients API with payload:', JSON.stringify(payload));
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
 
-            if (response.ok) {
-                const result = await response.json();
-                console.log('API Result for payload:', JSON.stringify(result));
-                // Handle both array and { PatientList: [] }
-                const list = Array.isArray(result) ? result : (result.PatientList || result.patientList || []);
-                if (list && list.length > 0) {
-                    patients = list;
-                    break;
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('API Result for payload:', JSON.stringify(result));
+                    // Postman shows a flat array, but we handle { PatientList: [] } just in case
+                    const list = Array.isArray(result) ? result : (result.PatientList || result.patientList || []);
+                    if (list && list.length > 0) {
+                        patients = list;
+                        break;
+                    }
                 }
+            } catch (pErr) {
+                console.error('Payload attempt failed:', pErr);
             }
         }
 
