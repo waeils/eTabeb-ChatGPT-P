@@ -48,17 +48,21 @@ export async function POST(request: Request) {
             return null;
         };
 
-        const sid = findSid(data) || data.rpValue;
+        const returnedSid = findSid(data);
+        // If the API returns a sessionId, use it. Otherwise, use the signOTPId from the request.
+        // We avoid using rpValue if it is 1, as that is likely just a success flag.
+        const sid = (returnedSid && returnedSid !== 1) ? returnedSid : signOTPId;
 
-        // If verified and has any form of identifier, user is already registered
-        const hasAccount = isVerified && (!!sid || (data.rpValue && data.rpValue > 0));
+        // User has an account if verified and we have a valid SessionId (not 1)
+        const hasAccount = isVerified && !!sid && Number(sid) > 1;
 
         console.log('Account Detection (Final):', {
             isVerified,
             hasAccount,
             sid,
-            foundSid: !!sid,
-            uid: data.rpValue,
+            returnedSid,
+            signOTPId,
+            rpValue: data.rpValue,
             keysInRange: Object.keys(data)
         });
 
@@ -68,7 +72,7 @@ export async function POST(request: Request) {
             rpStatus: data.rpStatus,
             message: isVerified ? 'OTP verified successfully' : (data.rpMsg || 'Invalid OTP code'),
             sessionId: sid,
-            userId: data.rpValue,
+            userId: (data.rpValue && data.rpValue > 1) ? data.rpValue : null,
             data, // Pass full object so patients API can find everything
         });
     } catch (error) {
