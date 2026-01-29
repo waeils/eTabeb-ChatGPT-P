@@ -14,19 +14,43 @@ const handler = createMcpHandler(async (server) => {
   // Register the appointment widget resource
   server.registerResource(
     appointmentWidget.templateUri,
-    "Widget for medical appointment booking", // Added missing description argument
+    "Widget for medical appointment booking",
     {
       name: "eTabeb Appointment Widget",
       mimeType: "text/html",
     },
     async () => {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://e-tabeb-chat-gpt-p.vercel.app";
+      
+      // Return embedded iframe widget
+      const widgetHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; padding: 0; overflow: hidden; }
+    iframe { 
+      width: 100%; 
+      height: 100vh; 
+      border: none; 
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <iframe src="${baseUrl}/appointments" allow="clipboard-write" sandbox="allow-same-origin allow-scripts allow-forms allow-popups"></iframe>
+</body>
+</html>
+      `.trim();
+      
       return {
         contents: [
           {
             uri: appointmentWidget.templateUri,
             mimeType: "text/html",
-            text: `${baseUrl}/appointments`,
+            text: widgetHtml,
           },
         ],
       };
