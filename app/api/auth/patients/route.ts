@@ -28,6 +28,7 @@ export async function POST(request: Request) {
         }
 
         const patients = await response.json();
+        console.log('Patients API Response:', JSON.stringify(patients));
 
         return NextResponse.json(patients);
     } catch (error) {

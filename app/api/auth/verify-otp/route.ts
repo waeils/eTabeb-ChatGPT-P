@@ -32,20 +32,23 @@ export async function POST(request: Request) {
         }
 
         const data = await response.json();
+        console.log('OTP Verify Raw:', JSON.stringify(data));
 
         // Check rpStatus for verification success (>= 1 means verified)
         const isVerified = data.rpStatus && data.rpStatus >= 1;
 
-        // If verified and has sessionId, user is already registered
-        const hasAccount = isVerified && data.sessionId;
+        // If verified and has sessionId OR a valid userId (rpValue), user is already registered
+        const hasAccount = isVerified && (!!data.sessionId || (data.rpValue && data.rpValue > 0));
+
+        console.log('Account Detection:', { isVerified, hasAccount, sid: !!data.sessionId, uid: data.rpValue });
 
         return NextResponse.json({
             isVerified,
-            hasAccount,  // True if user already has an eTabeb account
+            hasAccount,
             rpStatus: data.rpStatus,
             message: isVerified ? 'OTP verified successfully' : (data.rpMsg || 'Invalid OTP code'),
             sessionId: data.sessionId,
-            userId: data.rpValue,  // User ID after successful verification
+            userId: data.rpValue,
             data,
         });
     } catch (error) {
