@@ -209,6 +209,23 @@ export default function AppointmentBooking() {
         setIsAuthLoading(true);
         setError(null);
         try {
+            // Step 1: Search for user to get userSessionId
+            const searchRes = await fetch('/api/auth/search-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mobileNumber }),
+            });
+            const searchData = await searchRes.json();
+            
+            console.log('User search result:', searchData);
+            
+            // Store the userSessionId if user exists
+            if (searchData.userExists && searchData.sessionId) {
+                setSessionId(searchData.sessionId);
+                console.log('User found with session ID:', searchData.sessionId);
+            }
+            
+            // Step 2: Send OTP (whether user exists or not)
             const res = await fetch('/api/auth/send-otp', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -245,11 +262,14 @@ export default function AppointmentBooking() {
             });
             const data = await res.json();
             if (data.isVerified) {
-                if (data.hasAccount) {
-                    console.log('User has account, fetching patients with info:', data);
-                    setSessionId(data.sessionId || data.data?.sessionId || data.data?.UserSessionId);
-                    fetchPatients(data);
+                // Check if we have a sessionId from SearchUser (stored in state)
+                if (sessionId) {
+                    console.log('User exists, fetching patients with session ID:', sessionId);
+                    // User exists, fetch their patient list using the userSessionId from SearchUser
+                    fetchPatients({ sessionId });
                 } else {
+                    // New user, go to registration
+                    console.log('New user, redirecting to registration');
                     setAuthStep("register");
                 }
             } else {
@@ -262,15 +282,18 @@ export default function AppointmentBooking() {
         }
     };
 
-    const fetchPatients = async (authResult: any) => {
+    const fetchPatients = async (params: { sessionId: string }) => {
         setIsAuthLoading(true);
         try {
+            console.log('Fetching patients with session ID:', params.sessionId);
             const res = await fetch('/api/auth/patients', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(authResult), // Pass full auth result for fallback IDs
+                body: JSON.stringify({ sessionId: params.sessionId }),
             });
             const data = await res.json();
+
+            console.log('Patient list response:', data);
 
             // Flexibly handle array or object with PatientList property
             const list = Array.isArray(data) ? data : (data.PatientList || data.patientList || []);
@@ -288,6 +311,7 @@ export default function AppointmentBooking() {
                     setSelectedPatientId(normalized[0].patientId);
                 }
             } else {
+                console.log('No patients found, redirecting to registration');
                 setAuthStep("register");
             }
         } catch (err) {
@@ -340,25 +364,37 @@ export default function AppointmentBooking() {
 
         setAuthStep("verified");
         setIsAuthLoading(true);
+        setError(null);
         try {
+            console.log('Confirming booking for patient:', pid, 'timeslot:', selectedSlot.timeslotRTId, 'session:', sessionId);
             const res = await fetch('/api/appointments/reserve', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     timeslotRTId: selectedSlot.timeslotRTId,
-                    patientId: pid
+                    patientId: pid,
+                    sessionId: sessionId // Include session ID for validation
                 }),
             });
             const data = await res.json();
-            if (data.success) {
-                setConfirmationId(data.data.rpValue ? `ET-${data.data.rpValue}` : `ET-${Math.floor(100000 + Math.random() * 900000)}`);
+            
+            console.log('Booking response:', data);
+            
+            // Check for success - rpStatus > 0 means success in eTabeb API
+            if (data.success && data.rpStatus && data.rpStatus > 0) {
+                const confirmId = data.data?.rpValue || data.data?.reservationId || Math.floor(100000 + Math.random() * 900000);
+                setConfirmationId(`ET-${confirmId}`);
                 setBookingConfirmed(true);
             } else {
-                setError(data.message || "Real booking failed. The slot might have been taken.");
+                // Show the actual error message from the API
+                const errorMsg = data.data?.rpMsg || data.message || "Booking failed. The slot might have been taken.";
+                setError(errorMsg);
                 setAuthStep("pick-patient");
             }
         } catch (err) {
+            console.error('Booking error:', err);
             setError("Booking failed. Please check your connection.");
+            setAuthStep("pick-patient");
         } finally {
             setIsAuthLoading(false);
         }

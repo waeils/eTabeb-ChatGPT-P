@@ -32,7 +32,13 @@ export async function POST(request: Request) {
         }
 
         const data = await response.json();
-        console.log('OTP Verify Raw:', JSON.stringify(data));
+        console.log('========== OTP VERIFY API RESPONSE ==========');
+        console.log('Full Response:', JSON.stringify(data, null, 2));
+        console.log('Response Keys:', Object.keys(data));
+        console.log('rpStatus:', data.rpStatus);
+        console.log('rpValue:', data.rpValue);
+        console.log('rpMsg:', data.rpMsg);
+        console.log('============================================');
 
         // Check rpStatus for verification success (>= 1 means verified)
         const isVerified = data.rpStatus && data.rpStatus >= 1;
@@ -56,15 +62,15 @@ export async function POST(request: Request) {
         // User has an account if verified and we have a valid SessionId (not 1)
         const hasAccount = isVerified && !!sid && Number(sid) > 1;
 
-        console.log('Account Detection (Final):', {
-            isVerified,
-            hasAccount,
-            sid,
-            returnedSid,
-            signOTPId,
-            rpValue: data.rpValue,
-            keysInRange: Object.keys(data)
-        });
+        console.log('========== SESSION ID DETECTION ==========');
+        console.log('returnedSid from API:', returnedSid);
+        console.log('signOTPId (fallback):', signOTPId);
+        console.log('Final sid:', sid);
+        console.log('sid type:', typeof sid);
+        console.log('Number(sid):', Number(sid));
+        console.log('isVerified:', isVerified);
+        console.log('hasAccount:', hasAccount);
+        console.log('==========================================');
 
         return NextResponse.json({
             isVerified,

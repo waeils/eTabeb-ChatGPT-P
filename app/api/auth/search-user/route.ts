@@ -29,14 +29,29 @@ export async function POST(request: Request) {
 
         const data = await response.json();
 
-        // data is likely an array or object containing userSessionId
-        // As per user screenshot: $[0].usersSessionId
-        const sessionId = data[0]?.usersSessionId || data.usersSessionId || null;
+        console.log('========== SEARCH USER API RESPONSE ==========');
+        console.log('Full Response:', JSON.stringify(data, null, 2));
+        console.log('==============================================');
+
+        // API returns an array with user data
+        // Extract userSessionId from the response (field name: usersSessionId)
+        const userData = Array.isArray(data) ? data[0] : data;
+        const sessionId = userData?.usersSessionId || userData?.userSessionId || userData?.UserSessionId || null;
+        const userId = userData?.userId || null;
+        const userExists = !!sessionId;
+
+        console.log('========== USER SEARCH RESULT ==========');
+        console.log('User exists:', userExists);
+        console.log('Session ID:', sessionId);
+        console.log('User ID:', userId);
+        console.log('========================================');
 
         return NextResponse.json({
-            success: !!sessionId,
+            success: true,
+            userExists: userExists,
             sessionId: sessionId,
-            data: data
+            userId: userId,
+            userData: userData
         });
     } catch (error) {
         console.error('Error searching user:', error);
