@@ -368,6 +368,7 @@
     let doctors = [];
     let selectedDoctor = null;
     let timeslots = [];
+    let currentSessionId = null; // Store sessionId globally
     
     // Helper: Get doctor initials for avatar
     function getInitials(name) {
@@ -384,7 +385,7 @@
     function renderSearchUI() {
       container.innerHTML = `
         <div class="header">
-          <img src="https://e-tabeb-chat-gpt-p.vercel.app/eTabeb.svg" alt="eTabeb" style="width: 140px; height: auto; margin: 0 auto 16px; display: block;" onerror="this.src='https://e-tabeb-chat-gpt-p.vercel.app/eTabeb%204.png'" />
+          <img src="https://e-tabeb-chat-gpt-p.vercel.app/eTabeb.svg" alt="eTabeb" style="width: 140px; height: auto; margin: 0 auto 16px; display: block; filter: brightness(0) invert(1);" onerror="this.src='https://e-tabeb-chat-gpt-p.vercel.app/eTabeb%204.png'" />
           <h1>Book Appointment</h1>
         </div>
         <div class="content">
@@ -629,7 +630,7 @@
       const btn = document.getElementById('send-otp-btn');
       
       if (!phone) {
-        alert('Please enter your phone number');
+        console.error('Please enter your phone number');
         return;
       }
       
@@ -646,9 +647,9 @@
         const searchData = await searchRes.json();
         console.log('Search user response:', searchData);
         
-        // Extract sessionId from search response
-        const sessionId = searchData.sessionId || searchData.userSessionId || searchData.userData?.userSessionId || searchData.userData?.usersSessionId;
-        console.log('Extracted sessionId:', sessionId);
+        // Extract sessionId from search response and store globally
+        currentSessionId = searchData.sessionId || searchData.userSessionId || searchData.userData?.userSessionId || searchData.userData?.usersSessionId;
+        console.log('Extracted sessionId:', currentSessionId);
         
         // Then send OTP
         const otpRes = await fetch(`${baseUrl}/api/auth/send-otp`, {
@@ -659,20 +660,20 @@
         const otpData = await otpRes.json();
         
         if (otpData.signOTPId) {
-          showOTPInput(otpData.signOTPId, phone, sessionId || '');
+          showOTPInput(otpData.signOTPId, phone);
         } else {
           btn.disabled = false;
           btn.innerHTML = 'Send OTP';
-          alert('Failed to send OTP. Please try again.');
+          console.error('Failed to send OTP. Please try again.');
         }
       } catch (err) {
         btn.disabled = false;
         btn.innerHTML = 'Send OTP';
-        alert('Error: ' + err.message);
+        console.error('Error: ' + err.message);
       }
     };
     
-    function showOTPInput(signOTPId, phone, sessionId) {
+    function showOTPInput(signOTPId, phone) {
       document.getElementById('send-otp-btn').style.display = 'none';
       document.getElementById('otp-section').style.display = 'block';
       document.getElementById('otp-section').innerHTML = `
@@ -680,14 +681,14 @@
           <label class="form-label" style="color: #fff; display: block; margin-bottom: 8px; font-weight: 500;">Enter OTP Code</label>
           <input type="text" id="otp-input" placeholder="Enter 6-digit code" maxlength="6" style="width: 100%;" />
         </div>
-        <button onclick="verifyOTP('${signOTPId}', '${phone}', '${sessionId}')" class="btn" style="width: 100%;">Verify & Continue</button>
+        <button onclick="verifyOTP('${signOTPId}', '${phone}')" class="btn" style="width: 100%;">Verify & Continue</button>
       `;
     }
     
-    window.verifyOTP = async function(signOTPId, phone, sessionId) {
+    window.verifyOTP = async function(signOTPId, phone) {
       const otpCode = document.getElementById('otp-input').value.trim();
       if (!otpCode) {
-        alert('Please enter OTP code');
+        console.error('Please enter OTP code');
         return;
       }
       
@@ -700,13 +701,13 @@
         const data = await response.json();
         
         if (data.success) {
-          // Use sessionId from search-user, not from verify-otp
-          loadPatients(phone, sessionId);
+          // Use globally stored sessionId from search-user
+          loadPatients(phone, currentSessionId);
         } else {
-          alert('Invalid OTP. Please try again.');
+          console.error('Invalid OTP. Please try again.');
         }
       } catch (err) {
-        alert('Error: ' + err.message);
+        console.error('Error: ' + err.message);
       }
     };
     
@@ -723,7 +724,7 @@
         
         showPatientSelection(patients, phone);
       } catch (err) {
-        alert('Error loading patients: ' + err.message);
+        console.error('Error loading patients: ' + err.message);
       }
     }
     
