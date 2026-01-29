@@ -131,19 +131,56 @@ export default function AppointmentBooking() {
         init();
     }, []);
 
+    // Search doctors via API when user types
+    useEffect(() => {
+        if (!searchTerm) {
+            // Load all doctors when search is cleared
+            async function loadAllDoctors() {
+                setLoading(true);
+                try {
+                    const res = await fetch('/api/doctors', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ CityId: 1 })
+                    });
+                    const data = await res.json();
+                    setDoctors(data);
+                } catch (err) {
+                    console.error("Load doctors error:", err);
+                } finally {
+                    setLoading(false);
+                }
+            }
+            loadAllDoctors();
+            return;
+        }
+
+        // Debounce API call
+        const timer = setTimeout(async () => {
+            setLoading(true);
+            try {
+                const res = await fetch('/api/doctors', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        SearchText: searchTerm,
+                        CityId: 1 
+                    })
+                });
+                const data = await res.json();
+                setDoctors(data);
+            } catch (err) {
+                console.error("Search error:", err);
+            } finally {
+                setLoading(false);
+            }
+        }, 500); // Wait 500ms after user stops typing
+
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
     // Filtered Doctors (Client-side for instant feedback)
-    const filteredDoctors = doctors.filter(doc => {
-        if (!searchTerm) return true;
-        const s = searchTerm.toLowerCase();
-        return (
-            doc.name.toLowerCase().includes(s) ||
-            (doc.nameArabic && doc.nameArabic.toLowerCase().includes(s)) ||
-            doc.specialty.toLowerCase().includes(s) ||
-            (doc.specialtyArabic && doc.specialtyArabic.toLowerCase().includes(s)) ||
-            doc.facility.toLowerCase().includes(s) ||
-            (doc.facilityArabic && doc.facilityArabic.toLowerCase().includes(s))
-        );
-    });
+    const filteredDoctors = doctors;
 
     // Fetch Timeslots when doctor changes
     useEffect(() => {
