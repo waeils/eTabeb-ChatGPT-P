@@ -105,82 +105,55 @@ export default function AppointmentBooking() {
     // Initial Data Fetching
     useEffect(() => {
         async function init() {
-            setLoading(true);
             try {
                 // Fetch Countries
                 const cRes = await fetch('/api/auth/countries');
                 const cData = await cRes.json();
                 setCountries(cData);
                 setSelectedCountry(cData.find((c: any) => c.code === "+966") || cData[0]);
-
-                // Initial fetch for doctors (Jeddah by default)
-                // The user mentioned the API is fixed to return all doctors
-                const dRes = await fetch('/api/doctors', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ CityId: 1 })
-                });
-                const dData = await dRes.json();
-                setDoctors(dData);
             } catch (err) {
                 console.error("Init error:", err);
-            } finally {
-                setLoading(false);
             }
         }
         init();
     }, []);
 
-    // Search doctors via API when user types
+    // Load all doctors once on mount
     useEffect(() => {
-        if (!searchTerm) {
-            // Load all doctors when search is cleared
-            async function loadAllDoctors() {
-                setLoading(true);
-                try {
-                    const res = await fetch('/api/doctors', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ CityId: 1 })
-                    });
-                    const data = await res.json();
-                    setDoctors(data);
-                } catch (err) {
-                    console.error("Load doctors error:", err);
-                } finally {
-                    setLoading(false);
-                }
-            }
-            loadAllDoctors();
-            return;
-        }
-
-        // Debounce API call
-        const timer = setTimeout(async () => {
+        async function loadAllDoctors() {
             setLoading(true);
             try {
+                console.log('📋 Loading all doctors from API...');
                 const res = await fetch('/api/doctors', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        SearchText: searchTerm,
-                        CityId: 1 
-                    })
+                    body: JSON.stringify({ CityId: 1 }) // No limit - get all doctors
                 });
                 const data = await res.json();
+                console.log('✅ Loaded doctors:', data.length);
                 setDoctors(data);
             } catch (err) {
-                console.error("Search error:", err);
+                console.error("Load doctors error:", err);
             } finally {
                 setLoading(false);
             }
-        }, 500); // Wait 500ms after user stops typing
+        }
+        loadAllDoctors();
+    }, []);
 
-        return () => clearTimeout(timer);
-    }, [searchTerm]);
-
-    // Filtered Doctors (Client-side for instant feedback)
-    const filteredDoctors = doctors;
+    // Filter doctors client-side (instant, no API calls)
+    const filteredDoctors = doctors.filter(doc => {
+        if (!searchTerm) return true;
+        const s = searchTerm.toLowerCase();
+        return (
+            doc.name.toLowerCase().includes(s) ||
+            (doc.nameArabic && doc.nameArabic.toLowerCase().includes(s)) ||
+            doc.specialty.toLowerCase().includes(s) ||
+            (doc.specialtyArabic && doc.specialtyArabic.toLowerCase().includes(s)) ||
+            doc.facility.toLowerCase().includes(s) ||
+            (doc.facilityArabic && doc.facilityArabic.toLowerCase().includes(s))
+        );
+    });
 
     // Fetch Timeslots when doctor changes
     useEffect(() => {
