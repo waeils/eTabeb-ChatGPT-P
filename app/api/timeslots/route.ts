@@ -31,29 +31,24 @@ export async function POST(request: Request) {
         console.log('Total slots:', timeslots.length);
         console.log('===========================================');
 
-        // Transform and group timeslots by date
-        const transformedTimeslots = timeslots.map((slot: any) => ({
-            id: slot.timeslotRTId,
-            doctorId: slot.doctorId,
-            doctorName: slot.doctorName,
-            doctorNameArabic: slot.doctorNameOTE,
-            specialty: slot.medicalSpecialityTextEng,
-            specialtyArabic: slot.medicalSpecialityTextOTE,
-            facility: slot.medicalFacilityName,
-            facilityId: slot.medicalFacilityId,
-            medicalFacilityDoctorSpecialityRTId: slot.medicalFacilityDoctorSpecialityRTId,
-            dateStart: slot.timeslotDateStart,
-            dateEnd: slot.timeslotDateEnd,
-            timeStart: slot.timeslotTimeStart,
-            timeEnd: slot.timeslotTimeEnd,
-            // Format for display
+        // Filter by date if provided, otherwise show next 7 days
+        const today = new Date();
+        const maxDate = new Date();
+        maxDate.setDate(today.getDate() + 7);
+
+        const filteredSlots = timeslots.filter((slot: any) => {
+            const slotDate = new Date(slot.timeslotDateStart);
+            return slotDate >= today && slotDate <= maxDate;
+        });
+
+        // Limit to 50 slots to avoid ResponseTooLargeError
+        const limitedSlots = filteredSlots.slice(0, 50);
+
+        // Transform to minimal fields for ChatGPT (avoid ResponseTooLargeError)
+        const transformedTimeslots = limitedSlots.map((slot: any) => ({
             date: slot.timeslotDateStart,
             time: `${slot.timeslotTimeStart} - ${slot.timeslotTimeEnd}`,
-            // Temporarily set all to available - will fix based on actual API field
             available: true,
-            timeslotStatusMapId: slot.timeslotStatusMapId,
-            timeslotStatus: slot.timeslotStatus,
-            timeslotStatusText: slot.timeslotStatusText,
         }));
 
         return NextResponse.json(transformedTimeslots);
