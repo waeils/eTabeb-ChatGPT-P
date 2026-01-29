@@ -19,26 +19,19 @@ export async function POST(request: Request) {
 
         const doctors = await response.json();
 
-        // Transform the API response to match our app's format
-        const transformedDoctors = doctors.map((doctor: any) => ({
-            id: doctor.medicalFacilityDoctorSpecialityRTId.toString(),
-            doctorId: doctor.doctorId.toString(),
-            name: doctor.doctorName.trim(),
-            nameArabic: doctor.doctorNameOTE,
-            specialty: doctor.medicalSpecialityText,
-            specialtyArabic: doctor.medicalSpecialityTextOTE,
-            facility: doctor.medicalFacilityName,
-            facilityArabic: doctor.medicalFacilityNameOTE,
-            rating: doctor.ratingAvg || 0,
-            ratingText: doctor.ratingText,
-            ratingCount: doctor.ratingCount,
-            timeslotCount: doctor.timeslotCount,
-            price: doctor.priceRateMin,
-            currency: doctor.currencyCode,
-            image: doctor.picURL01,
-            isFavourite: doctor.isFavourite,
-            medicalFacilityDoctorSpecialityRTId: doctor.medicalFacilityDoctorSpecialityRTId,
-        }));
+        // Transform and limit to top 10 results (to avoid ResponseTooLargeError in ChatGPT)
+        const transformedDoctors = doctors
+            .slice(0, 10)
+            .map((doctor: any) => ({
+                id: doctor.medicalFacilityDoctorSpecialityRTId.toString(),
+                name: doctor.doctorName.trim(),
+                specialty: doctor.medicalSpecialityText,
+                facility: doctor.medicalFacilityName,
+                rating: doctor.ratingAvg || 0,
+                price: doctor.priceRateMin,
+                currency: doctor.currencyCode,
+                timeslotCount: doctor.timeslotCount,
+            }));
 
         return NextResponse.json(transformedDoctors);
     } catch (error) {
