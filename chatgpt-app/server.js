@@ -74,15 +74,15 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
 
 server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   if (request.params.uri === 'resource://booking-widget') {
-    // Add cache-busting version to widget HTML
-    const version = Date.now();
-    let html = widgetHtml.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL);
-    html = html.replace('</head>', `<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0"></head>`);
-    
+    // Add timestamp to force cache refresh
+    const timestamp = Date.now();
+    const html = widgetHtml
+      .replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL)
+      .replace('</head>', `<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" /><meta http-equiv="Pragma" content="no-cache" /><meta http-equiv="Expires" content="0" /><!-- v${timestamp} --></head>`);
     return {
       contents: [
         {
-          uri: 'resource://booking-widget',
+          uri: request.params.uri,
           mimeType: 'text/html',
           text: html,
         },
