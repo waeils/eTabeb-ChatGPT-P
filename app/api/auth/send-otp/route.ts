@@ -21,8 +21,8 @@ export async function POST(request: Request) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                countryid: countryId,    // Correct parameter name
-                mobileno: mobileNumber,  // Correct parameter name
+                countryid: countryId,
+                mobileNo: mobileNumber,  // Capital N as per API spec
             }),
         });
 
