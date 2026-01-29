@@ -206,16 +206,27 @@ function BookingContent() {
             <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl p-6 border border-blue-100">
                 {/* Header with eTabeb Branding */}
                 <div className="text-center mb-6">
-                    {/* eTabeb Logo */}
+                    {/* eTabeb Logo - Bigger */}
                     <div className="flex items-center justify-center mb-4">
                         <img 
                             src="/etabeb-logo.png" 
                             alt="eTabeb" 
-                            className="h-12 w-auto"
+                            className="h-20 w-auto"
                         />
                     </div>
                     <h2 className="text-xl font-semibold text-gray-800">Book Your Appointment</h2>
                     <p className="text-sm text-gray-500 mt-1">Complete your booking securely</p>
+                    
+                    {/* Security Message */}
+                    <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-3 flex items-start gap-2">
+                        <svg className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                        <div className="text-left">
+                            <p className="text-xs font-semibold text-green-800">Secure & Private</p>
+                            <p className="text-xs text-green-700 mt-0.5">Your personal data is protected and will not be shared with any AI agent</p>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Appointment Summary */}
@@ -260,7 +271,7 @@ function BookingContent() {
                                 <select
                                     value={selectedCountry?.id || ''}
                                     onChange={(e) => setSelectedCountry(countries.find(c => c.id === parseInt(e.target.value)) || null)}
-                                    className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1976B2] focus:border-transparent"
+                                    className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1976B2] focus:border-transparent text-gray-900 bg-white"
                                 >
                                     {countries.map(country => (
                                         <option key={country.id} value={country.id}>
@@ -273,7 +284,7 @@ function BookingContent() {
                                     value={mobileNumber}
                                     onChange={(e) => setMobileNumber(e.target.value)}
                                     placeholder="5XXXXXXXX"
-                                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1976B2] focus:border-transparent"
+                                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1976B2] focus:border-transparent text-gray-900 bg-white"
                                 />
                             </div>
                         </div>
@@ -300,7 +311,7 @@ function BookingContent() {
                                 onChange={(e) => setOtpCode(e.target.value)}
                                 placeholder="Enter 6-digit code"
                                 maxLength={6}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1976B2] focus:border-transparent text-center text-2xl tracking-widest"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1976B2] focus:border-transparent text-center text-2xl tracking-widest text-gray-900 bg-white placeholder-gray-400"
                             />
                             <p className="text-xs text-gray-500 mt-2 text-center">
                                 OTP sent to {selectedCountry?.code} {mobileNumber}
