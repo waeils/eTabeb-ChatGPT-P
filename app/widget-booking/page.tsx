@@ -3,16 +3,6 @@
 import { useState } from 'react';
 import Image from 'next/image';
 
-declare global {
-  interface Window {
-    openai?: {
-      callTool: (name: string, args: any) => Promise<any>;
-      sendFollowUp?: (message: string) => void;
-      closeWidget?: () => void;
-    };
-  }
-}
-
 export default function WidgetBooking() {
   const [step, setStep] = useState<'search' | 'doctors' | 'timeslots' | 'booking'>('search');
   const [searchText, setSearchText] = useState('');
@@ -33,27 +23,16 @@ export default function WidgetBooking() {
     setError('');
 
     try {
-      // Call the private search_doctors tool via widget API
-      const result = await window.openai?.callTool('search_doctors', {
-        searchText: searchText,
-        limit: 10
+      // Call the API directly to get structured data
+      const response = await fetch('/api/doctors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ SearchText: searchText, CityId: 1, limit: 10 })
       });
-
-      if (result && result.content && result.content[0]) {
-        // Parse the doctor list from the text response
-        const text = result.content[0].text;
-        
-        // For now, call the API directly since we need structured data
-        const response = await fetch('/api/doctors', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ SearchText: searchText, CityId: 1, limit: 10 })
-        });
-        const doctorData = await response.json();
-        
-        setDoctors(doctorData);
-        setStep('doctors');
-      }
+      const doctorData = await response.json();
+      
+      setDoctors(doctorData);
+      setStep('doctors');
     } catch (err: any) {
       setError(err.message || 'Failed to search doctors');
     } finally {
