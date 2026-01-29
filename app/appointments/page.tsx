@@ -246,8 +246,9 @@ export default function AppointmentBooking() {
             const data = await res.json();
             if (data.isVerified) {
                 if (data.hasAccount) {
-                    setSessionId(data.sessionId);
-                    fetchPatients(data.sessionId, data.userId);
+                    console.log('User has account, fetching patients with info:', data);
+                    setSessionId(data.sessionId || data.data?.sessionId || data.data?.UserSessionId);
+                    fetchPatients(data);
                 } else {
                     setAuthStep("register");
                 }
@@ -261,32 +262,36 @@ export default function AppointmentBooking() {
         }
     };
 
-    const fetchPatients = async (sid: string | null, uid?: number) => {
+    const fetchPatients = async (authResult: any) => {
         setIsAuthLoading(true);
         try {
             const res = await fetch('/api/auth/patients', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    sessionId: sid,
-                    userId: uid
-                }),
+                body: JSON.stringify(authResult), // Pass full auth result for fallback IDs
             });
             const data = await res.json();
-            if (data && data.length > 0) {
-                setPatients(data);
+
+            // Flexibly handle array or object with PatientList property
+            const list = Array.isArray(data) ? data : (data.PatientList || data.patientList || []);
+
+            if (list.length > 0) {
+                // Normalize names and IDs
+                const normalized = list.map((p: any) => ({
+                    patientId: p.patientId || p.Id || p.id || p.userId,
+                    patientName: p.patientName || p.name || p.Name || 'Patient',
+                    mobileNo: p.mobileNo || p.mobileNumber || p.MobileNumber || ''
+                }));
+                setPatients(normalized);
                 setAuthStep("pick-patient");
-                if (data.length === 1) {
-                    setSelectedPatientId(data[0].patientId);
+                if (normalized.length === 1) {
+                    setSelectedPatientId(normalized[0].patientId);
                 }
             } else {
-                // If no patients found but the user has an account, 
-                // redirect to registration to allow them to create their first patient profile.
                 setAuthStep("register");
             }
         } catch (err) {
             console.error("Failed to fetch patient list:", err);
-            // Fallback to registration if patient list retrieval fails
             setAuthStep("register");
         } finally {
             setIsAuthLoading(false);
@@ -317,7 +322,7 @@ export default function AppointmentBooking() {
             const data = await res.json();
             if (data.success) {
                 setSessionId(data.data.sessionId);
-                const pid = data.data.userId; // Usually userId is the PatientId for root user
+                const pid = data.data.userId;
                 setSelectedPatientId(pid);
                 confirmFinalBooking(pid);
             } else {

@@ -37,19 +37,19 @@ export async function POST(request: Request) {
         // Check rpStatus for verification success (>= 1 means verified)
         const isVerified = data.rpStatus && data.rpStatus >= 1;
 
-        // If verified and has sessionId OR a valid userId (rpValue), user is already registered
-        const hasAccount = isVerified && (!!data.sessionId || (data.rpValue && data.rpValue > 0));
+        // If verified and has any form of identifier, user is already registered
+        const hasAccount = isVerified && (!!data.sessionId || !!data.UserSessionId || (data.rpValue && data.rpValue > 0));
 
-        console.log('Account Detection:', { isVerified, hasAccount, sid: !!data.sessionId, uid: data.rpValue });
+        console.log('Account Detection:', { isVerified, hasAccount, sid: !!data.sessionId, usid: !!data.UserSessionId, uid: data.rpValue });
 
         return NextResponse.json({
             isVerified,
             hasAccount,
             rpStatus: data.rpStatus,
             message: isVerified ? 'OTP verified successfully' : (data.rpMsg || 'Invalid OTP code'),
-            sessionId: data.sessionId,
+            sessionId: data.sessionId || data.UserSessionId,
             userId: data.rpValue,
-            data,
+            data, // Pass full object so patients API can find everything
         });
     } catch (error) {
         console.error('Error verifying OTP:', error);

@@ -5,33 +5,42 @@ export async function POST(request: Request) {
         const body = await request.json();
         console.log('Patients Request Body:', JSON.stringify(body));
 
-        const { sessionId, userId } = body;
+        const sessionId = body.sessionId || body.data?.sessionId || body.data?.UserSessionId || body.signOTPId;
+        const userId = body.userId || body.data?.userId || body.data?.rpValue || body.userId;
 
         // Try with various possible parameter names
-        const payload = {
-            SessionId: sessionId || userId?.toString() || body.SessionId || body.signOTPId,
-            UserId: userId || body.userId,
-            isSystem: 0
-        };
+        const payloads = [
+            { SessionId: sessionId, isSystem: 0 },
+            { SessionId: userId?.toString(), isSystem: 0 },
+            { UserId: userId, isSystem: 0 }
+        ];
 
-        console.log('Patients API Call Payload:', JSON.stringify(payload));
-
+        let patients: any[] = [];
         const endpoint = 'https://etapisd.etabeb.com/api/AI/UserPatientList4Reserve';
-        const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
 
-        if (!response.ok) {
-            console.error(`eTabeb Patients API Error: ${response.status}`);
-            return NextResponse.json([]);
+        for (const payload of payloads) {
+            if (!payload.SessionId && !payload.UserId) continue;
+
+            console.log('Trying Patients API with payload:', JSON.stringify(payload));
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log('API Result for payload:', JSON.stringify(result));
+                // Handle both array and { PatientList: [] }
+                const list = Array.isArray(result) ? result : (result.PatientList || result.patientList || []);
+                if (list && list.length > 0) {
+                    patients = list;
+                    break;
+                }
+            }
         }
 
-        const patients = await response.json();
-        console.log('Patients API Result:', JSON.stringify(patients));
-
-        return NextResponse.json(patients || []);
+        return NextResponse.json(patients);
     } catch (error) {
         console.error('Error fetching patients:', error);
         return NextResponse.json(
