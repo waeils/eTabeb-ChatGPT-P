@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 export function middleware(request: NextRequest) {
+  // Rewrite /mcp-v2 to /mcp
+  if (request.nextUrl.pathname === "/mcp-v2") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/mcp";
+    return NextResponse.rewrite(url);
+  }
+
   if (request.method === "OPTIONS") {
     const response = new NextResponse(null, { status: 204 });
     response.headers.set("Access-Control-Allow-Origin", "*");

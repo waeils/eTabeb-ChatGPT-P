@@ -1,0 +1,17 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "eTabeb",
+  "name_for_model": "etabeb_booking",
+  "description_for_human": "Book medical appointments with eTabeb doctors in Saudi Arabia",
+  "description_for_model": "Medical appointment booking system for eTabeb. Helps users find doctors, check availability, and book appointments.",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "http://localhost:3001/openapi.json"
+  },
+  "logo_url": "http://localhost:3001/etabeb-logo.png",
+  "contact_email": "support@etabeb.com",
+  "legal_info_url": "https://etabeb.com/legal"
+}

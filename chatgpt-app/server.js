@@ -216,7 +216,7 @@ app.post('/mcp', async (req, res) => {
               {
                 uri: 'resource://booking-widget',
                 mimeType: 'text/html',
-                text: widgetHtml.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL),
+                text: widgetHtml.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL) + `<!-- Cache-bust: ${Date.now()} -->`,
               },
             ],
           },
@@ -247,6 +247,17 @@ app.post('/mcp', async (req, res) => {
                 'openai/toolInvocation/invoked': 'Booking widget ready. Search for doctors and complete your booking.',
                 'openai/widgetAccessible': true,
                 'openai/resultCanProduceWidget': true,
+                'openai/widgetCSP': {
+                  resource_domains: [
+                    'https://e-tabeb-chat-gpt-p.vercel.app'
+                  ],
+                  connect_domains: [
+                    'https://e-tabeb-chat-gpt-p.vercel.app'
+                  ],
+                  redirect_domains: [
+                    'https://e-tabeb-chat-gpt-p.vercel.app'
+                  ]
+                },
               },
             },
             {
@@ -599,7 +610,7 @@ app.post('/mcp-v2', async (req, res) => {
               {
                 uri: 'resource://booking-widget',
                 mimeType: 'text/html',
-                text: widgetHtml.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL),
+                text: widgetHtml.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL) + `<!-- Cache-bust: ${Date.now()} -->`,
               },
             ],
           },
@@ -630,6 +641,17 @@ app.post('/mcp-v2', async (req, res) => {
                 'openai/toolInvocation/invoked': 'Booking widget ready. Search for doctors and complete your booking.',
                 'openai/widgetAccessible': true,
                 'openai/resultCanProduceWidget': true,
+                'openai/widgetCSP': {
+                  resource_domains: [
+                    'https://e-tabeb-chat-gpt-p.vercel.app'
+                  ],
+                  connect_domains: [
+                    'https://e-tabeb-chat-gpt-p.vercel.app'
+                  ],
+                  redirect_domains: [
+                    'https://e-tabeb-chat-gpt-p.vercel.app'
+                  ]
+                },
               },
             },
             {
@@ -832,8 +854,9 @@ app.post('/mcp-v2', async (req, res) => {
             resources: {},
           },
           serverInfo: {
-            name: 'eTabeb Booking App v2',
+            name: 'eTabeb',
             version: '2.0.0',
+            icon: `${BASE_URL}/etabeb-logo.png`,
           },
         },
       };
@@ -853,14 +876,21 @@ app.post('/mcp-v2', async (req, res) => {
 
 app.get('/mcp-v2', (req, res) => {
   res.json({
-    name: 'eTabeb Booking App v2',
+    name: 'eTabeb',
     version: '2.0.0',
     description: 'Medical appointment booking with eTabeb (cache-busted)',
+    icon: `${BASE_URL}/etabeb-logo.png`,
   });
+});
+
+// Serve the logo
+app.get('/etabeb-logo.png', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'etabeb-logo.png'));
 });
 
 app.listen(PORT, () => {
   console.log(`🚀 eTabeb ChatGPT App running on port ${PORT}`);
   console.log(`📍 MCP endpoint: ${BASE_URL}/mcp`);
   console.log(`📍 MCP v2 endpoint (cache-busted): ${BASE_URL}/mcp-v2`);
+  console.log(`🎨 App icon: ${BASE_URL}/etabeb-logo.png`);
 });
