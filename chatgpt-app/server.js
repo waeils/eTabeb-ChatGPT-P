@@ -20,6 +20,23 @@ const PORT = process.env.PORT || 3001;
 app.use(express.json());
 app.use(express.static('public'));
 
+// Serve widget with URL parameters
+app.get('/widget', (req, res) => {
+  const searchText = req.query.searchText || '';
+  const widgetHtmlPath = path.join(__dirname, 'public', 'booking-widget.html');
+  let html = fs.readFileSync(widgetHtmlPath, 'utf8');
+  
+  // Inject searchText as URL parameter that widget can read
+  html = html.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL);
+  
+  // Inject searchText into a script tag
+  const widgetParamsScript = `<script>window.WIDGET_PARAMS = { searchText: ${JSON.stringify(searchText)} };</script>`;
+  html = html.replace('</head>', `${widgetParamsScript}</head>`);
+  
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
+
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const BOOKING_APP_URL = process.env.BOOKING_APP_URL || 'https://e-tabeb-chat-gpt-p.vercel.app';
 
@@ -41,6 +58,9 @@ const widgetHtml = fs.readFileSync(
   'utf-8'
 );
 
+// Store search context in memory (session-based)
+let currentSearchContext = '';
+
 server.setRequestHandler(ListResourcesRequestSchema, async () => {
   return {
     resources: [
@@ -51,16 +71,18 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
         mimeType: 'text/html',
         _meta: {
           'openai/widgetDescription': 'Search doctors and select a timeslot, then open the secure booking page.',
-          'openai/widgetDomain': 'https://widget.etabeb.com',
+          'openai/widgetDomain': 'mcp.etabeb.sa',
           'openai/widgetCSP': {
             connect_domains: [
-              'https://travellable-ruthann-grazingly.ngrok-free.dev',
+              'https://mcp.etabeb.sa',
               'https://e-tabeb-chat-gpt-p.vercel.app',
+              'https://etapisd.etabeb.com',
             ],
             resource_domains: [
-              'https://travellable-ruthann-grazingly.ngrok-free.dev',
+              'https://mcp.etabeb.sa',
               'https://e-tabeb-chat-gpt-p.vercel.app',
               'https://persistent.oaistatic.com',
+              'https://api4web.etabeb.com',
             ],
             redirect_domains: [
               'https://e-tabeb-chat-gpt-p.vercel.app',
@@ -85,6 +107,24 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
           uri: request.params.uri,
           mimeType: 'text/html',
           text: html,
+          _meta: {
+            'openai/widgetDomain': 'mcp.etabeb.sa',
+            'openai/widgetCSP': {
+              resource_domains: [
+                'https://mcp.etabeb.sa',
+                'https://e-tabeb-chat-gpt-p.vercel.app',
+                'https://persistent.oaistatic.com',
+              ],
+              connect_domains: [
+                'https://mcp.etabeb.sa',
+                'https://e-tabeb-chat-gpt-p.vercel.app',
+                'https://etapisd.etabeb.com',
+              ],
+              redirect_domains: [
+                'https://e-tabeb-chat-gpt-p.vercel.app',
+              ],
+            },
+          },
         },
       ],
     };
@@ -207,16 +247,51 @@ app.post('/mcp', async (req, res) => {
       };
     } else if (request.method === 'resources/read') {
       const uri = request.params?.uri;
-      if (uri === 'resource://booking-widget') {
+      if (uri && uri.startsWith('resource://booking-widget')) {
+        // Use stored context and preloaded doctors
+        const searchText = currentSearchContext || '';
+        const preloadedDoctorsData = global.preloadedDoctorsData || [];
+        const hasPreloaded = preloadedDoctorsData.length > 0;
+        
+        console.log('[MCP resources/read] Loading widget with:', { searchText, hasPreloaded, doctorCount: preloadedDoctorsData.length });
+        
+        // Inject searchText and preloaded doctors into widget HTML as JSON
+        let customWidgetHtml = widgetHtml.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL);
+        const widgetParamsScript = `<script>
+          window.WIDGET_PARAMS = { searchText: ${JSON.stringify(searchText)}, preloadedResults: ${hasPreloaded} };
+          window.PRELOADED_DOCTORS_DATA = ${JSON.stringify(preloadedDoctorsData)};
+          console.log('[RESOURCES/READ] Injected doctors:', window.PRELOADED_DOCTORS_DATA?.length || 0);
+        </script>`;
+        customWidgetHtml = customWidgetHtml.replace('</head>', `${widgetParamsScript}</head>`) + `<!-- Cache-bust: ${Date.now()} -->`;
+        
         response = {
           jsonrpc: '2.0',
           id: request.id,
           result: {
             contents: [
               {
-                uri: 'resource://booking-widget',
+                uri: uri,
                 mimeType: 'text/html',
-                text: widgetHtml.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL) + `<!-- Cache-bust: ${Date.now()} -->`,
+                text: customWidgetHtml,
+                _meta: {
+                  'openai/widgetDomain': 'mcp.etabeb.sa',
+                  'openai/widgetCSP': {
+                    resource_domains: [
+                      'https://mcp.etabeb.sa',
+                      'https://e-tabeb-chat-gpt-p.vercel.app',
+                      'https://persistent.oaistatic.com',
+                      'https://api4web.etabeb.com',
+                    ],
+                    connect_domains: [
+                      'https://mcp.etabeb.sa',
+                      'https://e-tabeb-chat-gpt-p.vercel.app',
+                      'https://etapisd.etabeb.com',
+                    ],
+                    redirect_domains: [
+                      'https://e-tabeb-chat-gpt-p.vercel.app',
+                    ],
+                  },
+                },
               },
             ],
           },
@@ -236,23 +311,31 @@ app.post('/mcp', async (req, res) => {
           tools: [
             {
               name: 'open_booking_widget_v2',
-              description: 'Use this when the user wants to book a medical appointment. Opens an interactive booking widget where the user can search for doctors, view available timeslots, and complete their booking securely. The widget handles the entire booking flow including phone verification and patient selection.',
+              description: 'Get available doctors for booking. Returns structured JSON with doctor cards data for UI rendering. Always use this to show doctor availability.',
               inputSchema: {
                 type: 'object',
-                properties: {},
+                properties: {
+                  searchText: {
+                    type: 'string',
+                    description: 'Doctor specialty, doctor name, or medical condition from user message (e.g., "endocrinology", "Dr. Smith", "diabetes")',
+                  },
+                },
+                required: ['searchText'],
               },
               _meta: {
-                'openai/outputTemplate': 'resource://booking-widget',
-                'openai/toolInvocation/invoking': 'Opening booking widget...',
-                'openai/toolInvocation/invoked': 'Booking widget ready. Search for doctors and complete your booking.',
-                'openai/widgetAccessible': true,
-                'openai/resultCanProduceWidget': true,
+                'openai/toolInvocation/invoking': 'Searching for available doctors...',
+                'openai/toolInvocation/invoked': 'Found doctors. Displaying results.',
                 'openai/widgetCSP': {
                   resource_domains: [
-                    'https://e-tabeb-chat-gpt-p.vercel.app'
+                    'https://mcp.etabeb.sa',
+                    'https://e-tabeb-chat-gpt-p.vercel.app',
+                    'https://persistent.oaistatic.com',
+                    'https://api4web.etabeb.com'
                   ],
                   connect_domains: [
-                    'https://e-tabeb-chat-gpt-p.vercel.app'
+                    'https://mcp.etabeb.sa',
+                    'https://e-tabeb-chat-gpt-p.vercel.app',
+                    'https://etapisd.etabeb.com'
                   ],
                   redirect_domains: [
                     'https://e-tabeb-chat-gpt-p.vercel.app'
@@ -262,7 +345,7 @@ app.post('/mcp', async (req, res) => {
             },
             {
               name: 'search_doctors',
-              description: 'Search for doctors by name, specialty, or facility in Jeddah. Returns doctor details including ID, name, specialty, facility, rating, and price.',
+              description: 'ALWAYS use this FIRST before opening the booking widget. If user mentions a specific doctor name, search with that name immediately. If user mentions specialty, search with that specialty. Ask ONLY: "What specialty?" if not provided. Do NOT ask about city, gender, adult/pediatric, insurance, time, or hospital names. After showing results, ask if they want to proceed with booking.',
               inputSchema: {
                 type: 'object',
                 properties: {
@@ -301,14 +384,151 @@ app.post('/mcp', async (req, res) => {
                 'openai/widgetAccessible': true,
               },
             },
+            {
+              name: 'get_search_context',
+              description: 'Widget-only tool to retrieve the current search context.',
+              inputSchema: {
+                type: 'object',
+                properties: {},
+              },
+              _meta: {
+                'openai/visibility': 'private',
+                'openai/widgetAccessible': true,
+              },
+            },
+            {
+              name: 'lookup_specialty',
+              description: 'Convert specialty name to specialty ID. Call this before searching doctors if user mentions a specialty.',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  specialtyName: {
+                    type: 'string',
+                    description: 'Specialty name (e.g., "endocrinology", "dermatology")',
+                  },
+                },
+                required: ['specialtyName'],
+              },
+              _meta: {
+                'openai/visibility': 'private',
+              },
+            },
+            {
+              name: 'lookup_facility',
+              description: 'Convert facility/hospital name to facility ID. Call this if user mentions a specific hospital.',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  facilityName: {
+                    type: 'string',
+                    description: 'Facility name (e.g., "Fakeeh", "Soliman Fakeeh Hospital")',
+                  },
+                },
+                required: ['facilityName'],
+              },
+              _meta: {
+                'openai/visibility': 'private',
+              },
+            },
           ],
         },
       };
     } else if (request.method === 'tools/call') {
       const { name, arguments: args } = request.params;
+      console.log('[MCP] tools/call received:', name, args);
       
       if (name === 'open_booking_widget_v2' || name === 'open_booking_widget') {
-        // Simple tool that just opens the widget - no validation needed
+        try {
+          console.log('[MCP] START open_booking_widget_v2 handler');
+          // Get parameters from arguments
+          const searchText = args?.searchText || args?.specialty || args?.doctorName || '';
+          currentSearchContext = searchText;
+          
+          console.log('[MCP] Opening widget with params:', { searchText });
+        
+        // Fetch doctor search results to pre-populate widget
+        let doctorsHtml = '';
+        let doctorCount = 0;
+        let doctors = [];
+        if (searchText) {
+          try {
+            // Use DoctorList API with searchText parameter
+            console.log('[MCP] Fetching doctors from DoctorList API with searchText:', searchText);
+            const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ searchText: searchText }),
+            });
+            doctors = await apiResponse.json();
+            
+            console.log('[MCP] Received doctors:', doctors?.length || 0);
+            
+            if (doctors && doctors.length > 0) {
+              doctorCount = doctors.length;
+              // Generate HTML for doctor results using DoctorList API fields
+              doctorsHtml = doctors.map(doctor => `
+                <div class="doctor-card" onclick="selectDoctor(${JSON.stringify(doctor).replace(/"/g, '&quot;')})">
+                  ${doctor.timeslotCount > 0 ? `<div class="doctor-availability">${doctor.timeslotCount} slots</div>` : ''}
+                  <img src="${doctor.picURL01 || 'https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png'}" alt="${doctor.doctorName}" onerror="this.src='https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png'">
+                  <div class="doctor-info">
+                    <div class="doctor-name">${doctor.doctorName}</div>
+                    <div class="doctor-specialty">${doctor.medicalSpecialityText}</div>
+                    <div class="doctor-facility">📍 ${doctor.medicalFacilityName}</div>
+                    <div class="doctor-meta">
+                      <span class="doctor-rating">⭐ ${doctor.ratingAvg || doctor.ratingText || 'New'}</span>
+                      <span class="doctor-price">${doctor.priceRateMin || '0'} ${doctor.currencyCode}</span>
+                    </div>
+                  </div>
+                </div>
+              `).join('');
+              console.log('[MCP] Generated HTML for', doctorCount, 'doctors');
+            } else {
+              console.log('[MCP] No doctors found for searchText:', searchText);
+            }
+          } catch (error) {
+            console.error('[MCP] Error fetching doctors:', error);
+          }
+        }
+        
+        console.log('[MCP] About to inject doctors into widget HTML, count:', doctorCount);
+        
+        // Store preloaded doctors in memory
+        currentSearchContext = searchText;
+        global.preloadedDoctors = doctorsHtml;
+        global.preloadedDoctorsData = doctors;
+        global.preloadedCount = doctorCount;
+        
+        // Format doctor data for ChatGPT's native card rendering
+        const doctorCards = doctors.map(d => ({
+          id: String(d.doctorId || d.medicalFacilityDoctorSpecialityRTId),
+          full_name: d.doctorName?.trim() || 'Unknown',
+          specialty: d.medicalSpecialityText?.trim() || searchText,
+          clinic_name: d.medicalFacilityName?.trim() || 'Unknown Clinic',
+          city: 'Jeddah',
+          address: d.medicalFacilityName?.trim() || '',
+          rating: d.ratingAvg || 0,
+          review_count: 0,
+          price: {
+            amount: parseFloat(d.priceRateMin) || 0,
+            currency: d.currencyCode || 'SAR'
+          },
+          next_available: d.timeslotCount > 0 ? 'Available now' : 'No slots',
+          available_slots: d.timeslotCount || 0,
+          booking_url: `https://e-tabeb-chat-gpt-p.vercel.app/?doctor=${d.doctorId}`,
+          telehealth: false,
+          image: d.picURL01 || 'https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png'
+        }));
+        
+        const responseData = {
+          type: 'doctor_search_results',
+          query: {
+            specialty: searchText,
+            city: 'Jeddah'
+          },
+          total_results: doctorCount,
+          doctors: doctorCards
+        };
+        
         response = {
           jsonrpc: '2.0',
           id: request.id,
@@ -316,7 +536,167 @@ app.post('/mcp', async (req, res) => {
             content: [
               {
                 type: 'text',
-                text: 'Opening the eTabeb booking widget. You can search for doctors, view available appointments, and complete your booking securely.',
+                text: JSON.stringify(responseData, null, 2)
+              },
+            ],
+            isError: false,
+          },
+        };
+        } catch (error) {
+          console.error('[MCP] FATAL ERROR in open_booking_widget_v2:', error);
+          response = {
+            jsonrpc: '2.0',
+            id: request.id,
+            result: {
+              content: [{ type: 'text', text: `Error: ${error.message}` }],
+              isError: true,
+            },
+          };
+        }
+      } else if (name === 'lookup_specialty') {
+        // Lookup specialty ID from name
+        const specialtyName = args?.specialtyName || '';
+        try {
+          const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/SpecialitiesList', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          const specialties = await apiResponse.json();
+          
+          // Find matching specialty (case-insensitive, partial match)
+          const match = specialties.find(s => 
+            s.text.toLowerCase().includes(specialtyName.toLowerCase()) ||
+            s.text1.toLowerCase().includes(specialtyName.toLowerCase())
+          );
+          
+          if (match) {
+            response = {
+              jsonrpc: '2.0',
+              id: request.id,
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify({ 
+                      specialtyId: match.value,
+                      specialtyCode: match.code,
+                      specialtyName: match.text,
+                      specialtyNameArabic: match.text1
+                    }),
+                  },
+                ],
+                isError: false,
+              },
+            };
+          } else {
+            response = {
+              jsonrpc: '2.0',
+              id: request.id,
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify({ error: 'Specialty not found', searchTerm: specialtyName }),
+                  },
+                ],
+                isError: false,
+              },
+            };
+          }
+        } catch (error) {
+          console.error('[MCP] Error looking up specialty:', error);
+          response = {
+            jsonrpc: '2.0',
+            id: request.id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({ error: 'Failed to lookup specialty' }),
+                },
+              ],
+              isError: false,
+            },
+          };
+        }
+      } else if (name === 'lookup_facility') {
+        // Lookup facility ID from name
+        const facilityName = args?.facilityName || '';
+        try {
+          const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/HospitalList', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          const facilities = await apiResponse.json();
+          
+          // Find matching facility (case-insensitive, partial match)
+          const match = facilities.find(f => 
+            f.text.toLowerCase().includes(facilityName.toLowerCase()) ||
+            f.text1.toLowerCase().includes(facilityName.toLowerCase())
+          );
+          
+          if (match) {
+            response = {
+              jsonrpc: '2.0',
+              id: request.id,
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify({ 
+                      facilityId: match.value,
+                      facilityCode: match.code,
+                      facilityName: match.text,
+                      facilityNameArabic: match.text1
+                    }),
+                  },
+                ],
+                isError: false,
+              },
+            };
+          } else {
+            response = {
+              jsonrpc: '2.0',
+              id: request.id,
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify({ error: 'Facility not found', searchTerm: facilityName }),
+                  },
+                ],
+                isError: false,
+              },
+            };
+          }
+        } catch (error) {
+          console.error('[MCP] Error looking up facility:', error);
+          response = {
+            jsonrpc: '2.0',
+            id: request.id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({ error: 'Failed to lookup facility' }),
+                },
+              ],
+              isError: false,
+            },
+          };
+        }
+      } else if (name === 'get_search_context') {
+        // Return the current search context for the widget
+        response = {
+          jsonrpc: '2.0',
+          id: request.id,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({ searchText: currentSearchContext }),
               },
             ],
             isError: false,
@@ -339,10 +719,12 @@ app.post('/mcp', async (req, res) => {
         }
         
         try {
-          const apiResponse = await fetch(`${BOOKING_APP_URL}/api/doctors`, {
+          // Use DoctorList API with searchText parameter
+          console.log('[MCP] Fetching doctors from DoctorList API with searchText:', searchText);
+          const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ SearchText: searchText, CityId: 1, limit }),
+            body: JSON.stringify({ searchText: searchText }),
           });
           const doctors = await apiResponse.json();
           
@@ -359,7 +741,7 @@ app.post('/mcp', async (req, res) => {
           }
           
           const doctorList = doctors.slice(0, limit).map((d, i) => 
-            `${i + 1}. **${d.name}** - ${d.specialty}\n   📍 ${d.facility}\n   ⭐ ${d.rating} | 💰 ${d.price} ${d.currency}\n   Doctor ID: ${d.id}`
+            `${i + 1}. **${d.doctorName}** - ${d.medicalSpecialityText}\n   📍 ${d.medicalFacilityName}\n   ⭐ ${d.ratingAvg || d.ratingText || 'New'} | 💰 ${d.priceRateMin || '0'} ${d.currencyCode}`
           ).join('\n\n');
           
           response = {
@@ -369,7 +751,7 @@ app.post('/mcp', async (req, res) => {
               content: [
                 {
                   type: 'text',
-                  text: `Found ${doctors.length} doctors:\n\n${doctorList}\n\nAsk the user which doctor they'd like to see, then use get_timeslots with the Doctor ID.`,
+                  text: `I found ${doctors.length} doctors matching "${searchText}":\n\n${doctorList}\n\nWould you like to proceed with booking an appointment? I can open the booking system for you to select a time slot.`,
                 },
               ],
               isError: false,
@@ -601,16 +983,51 @@ app.post('/mcp-v2', async (req, res) => {
       };
     } else if (request.method === 'resources/read') {
       const uri = request.params?.uri;
-      if (uri === 'resource://booking-widget') {
+      if (uri && uri.startsWith('resource://booking-widget')) {
+        // Use stored context and preloaded doctors
+        const searchText = currentSearchContext || '';
+        const preloadedDoctorsData = global.preloadedDoctorsData || [];
+        const hasPreloaded = preloadedDoctorsData.length > 0;
+        
+        console.log('[MCP resources/read] Loading widget with:', { searchText, hasPreloaded, doctorCount: preloadedDoctorsData.length });
+        
+        // Inject searchText and preloaded doctors into widget HTML as JSON
+        let customWidgetHtml = widgetHtml.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL);
+        const widgetParamsScript = `<script>
+          window.WIDGET_PARAMS = { searchText: ${JSON.stringify(searchText)}, preloadedResults: ${hasPreloaded} };
+          window.PRELOADED_DOCTORS_DATA = ${JSON.stringify(preloadedDoctorsData)};
+          console.log('[RESOURCES/READ] Injected doctors:', window.PRELOADED_DOCTORS_DATA?.length || 0);
+        </script>`;
+        customWidgetHtml = customWidgetHtml.replace('</head>', `${widgetParamsScript}</head>`) + `<!-- Cache-bust: ${Date.now()} -->`;
+        
         response = {
           jsonrpc: '2.0',
           id: request.id,
           result: {
             contents: [
               {
-                uri: 'resource://booking-widget',
+                uri: uri,
                 mimeType: 'text/html',
-                text: widgetHtml.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL) + `<!-- Cache-bust: ${Date.now()} -->`,
+                text: customWidgetHtml,
+                _meta: {
+                  'openai/widgetDomain': 'mcp.etabeb.sa',
+                  'openai/widgetCSP': {
+                    resource_domains: [
+                      'https://mcp.etabeb.sa',
+                      'https://e-tabeb-chat-gpt-p.vercel.app',
+                      'https://persistent.oaistatic.com',
+                      'https://api4web.etabeb.com',
+                    ],
+                    connect_domains: [
+                      'https://mcp.etabeb.sa',
+                      'https://e-tabeb-chat-gpt-p.vercel.app',
+                      'https://etapisd.etabeb.com',
+                    ],
+                    redirect_domains: [
+                      'https://e-tabeb-chat-gpt-p.vercel.app',
+                    ],
+                  },
+                },
               },
             ],
           },
@@ -630,23 +1047,31 @@ app.post('/mcp-v2', async (req, res) => {
           tools: [
             {
               name: 'open_booking_widget_v2',
-              description: 'Use this when the user wants to book a medical appointment. Opens an interactive booking widget where the user can search for doctors, view available timeslots, and complete their booking securely. The widget handles the entire booking flow including phone verification and patient selection.',
+              description: 'Get available doctors for booking. Returns structured JSON with doctor cards data for UI rendering. Always use this to show doctor availability.',
               inputSchema: {
                 type: 'object',
-                properties: {},
+                properties: {
+                  searchText: {
+                    type: 'string',
+                    description: 'Doctor specialty, doctor name, or medical condition from user message (e.g., "endocrinology", "Dr. Smith", "diabetes")',
+                  },
+                },
+                required: ['searchText'],
               },
               _meta: {
-                'openai/outputTemplate': 'resource://booking-widget',
-                'openai/toolInvocation/invoking': 'Opening booking widget...',
-                'openai/toolInvocation/invoked': 'Booking widget ready. Search for doctors and complete your booking.',
-                'openai/widgetAccessible': true,
-                'openai/resultCanProduceWidget': true,
+                'openai/toolInvocation/invoking': 'Searching for available doctors...',
+                'openai/toolInvocation/invoked': 'Found doctors. Displaying results.',
                 'openai/widgetCSP': {
                   resource_domains: [
-                    'https://e-tabeb-chat-gpt-p.vercel.app'
+                    'https://mcp.etabeb.sa',
+                    'https://e-tabeb-chat-gpt-p.vercel.app',
+                    'https://persistent.oaistatic.com',
+                    'https://api4web.etabeb.com'
                   ],
                   connect_domains: [
-                    'https://e-tabeb-chat-gpt-p.vercel.app'
+                    'https://mcp.etabeb.sa',
+                    'https://e-tabeb-chat-gpt-p.vercel.app',
+                    'https://etapisd.etabeb.com'
                   ],
                   redirect_domains: [
                     'https://e-tabeb-chat-gpt-p.vercel.app'
@@ -656,7 +1081,7 @@ app.post('/mcp-v2', async (req, res) => {
             },
             {
               name: 'search_doctors',
-              description: 'Search for doctors by name, specialty, or facility in Jeddah. Returns doctor details including ID, name, specialty, facility, rating, and price.',
+              description: 'ALWAYS use this FIRST before opening the booking widget. If user mentions a specific doctor name, search with that name immediately. If user mentions specialty, search with that specialty. Ask ONLY: "What specialty?" if not provided. Do NOT ask about city, gender, adult/pediatric, insurance, time, or hospital names. After showing results, ask if they want to proceed with booking.',
               inputSchema: {
                 type: 'object',
                 properties: {
@@ -695,13 +1120,164 @@ app.post('/mcp-v2', async (req, res) => {
                 'openai/widgetAccessible': true,
               },
             },
+            {
+              name: 'get_search_context',
+              description: 'Widget-only tool to retrieve the current search context.',
+              inputSchema: {
+                type: 'object',
+                properties: {},
+              },
+              _meta: {
+                'openai/visibility': 'private',
+                'openai/widgetAccessible': true,
+              },
+            },
+            {
+              name: 'lookup_specialty',
+              description: 'Convert specialty name to specialty ID. Call this before searching doctors if user mentions a specialty.',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  specialtyName: {
+                    type: 'string',
+                    description: 'Specialty name (e.g., "endocrinology", "dermatology")',
+                  },
+                },
+                required: ['specialtyName'],
+              },
+              _meta: {
+                'openai/visibility': 'private',
+              },
+            },
+            {
+              name: 'lookup_facility',
+              description: 'Convert facility/hospital name to facility ID. Call this if user mentions a specific hospital.',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  facilityName: {
+                    type: 'string',
+                    description: 'Facility name (e.g., "Fakeeh", "Soliman Fakeeh Hospital")',
+                  },
+                },
+                required: ['facilityName'],
+              },
+              _meta: {
+                'openai/visibility': 'private',
+              },
+            },
           ],
         },
       };
     } else if (request.method === 'tools/call') {
       const { name, arguments: args } = request.params;
+      console.log('[MCP] tools/call received:', name, args);
       
       if (name === 'open_booking_widget_v2' || name === 'open_booking_widget') {
+        try {
+          console.log('[MCP] START open_booking_widget_v2 handler');
+          // Get parameters from arguments
+          const searchText = args?.searchText || args?.specialty || args?.doctorName || '';
+          currentSearchContext = searchText;
+          
+          console.log('[MCP] Opening widget with params:', { searchText });
+        
+        // Fetch doctor search results to pre-populate widget
+        let doctorsHtml = '';
+        let doctorCount = 0;
+        let doctors = [];
+        if (searchText) {
+          try {
+            // Use DoctorList API with searchText parameter
+            console.log('[MCP] Fetching doctors from DoctorList API with searchText:', searchText);
+            const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ searchText: searchText }),
+            });
+            doctors = await apiResponse.json();
+            
+            console.log('[MCP] Received doctors:', doctors?.length || 0);
+            
+            if (doctors && doctors.length > 0) {
+              doctorCount = doctors.length;
+              // Generate HTML for doctor results using DoctorList API fields
+              doctorsHtml = doctors.map(doctor => `
+                <div class="doctor-card" onclick="selectDoctor(${JSON.stringify(doctor).replace(/"/g, '&quot;')})">
+                  ${doctor.timeslotCount > 0 ? `<div class="doctor-availability">${doctor.timeslotCount} slots</div>` : ''}
+                  <img src="${doctor.picURL01 || 'https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png'}" alt="${doctor.doctorName}" onerror="this.src='https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png'">
+                  <div class="doctor-info">
+                    <div class="doctor-name">${doctor.doctorName}</div>
+                    <div class="doctor-specialty">${doctor.medicalSpecialityText}</div>
+                    <div class="doctor-facility">📍 ${doctor.medicalFacilityName}</div>
+                    <div class="doctor-meta">
+                      <span class="doctor-rating">⭐ ${doctor.ratingAvg || doctor.ratingText || 'New'}</span>
+                      <span class="doctor-price">${doctor.priceRateMin || '0'} ${doctor.currencyCode}</span>
+                    </div>
+                  </div>
+                </div>
+              `).join('');
+              console.log('[MCP] Generated HTML for', doctorCount, 'doctors');
+            } else {
+              console.log('[MCP] No doctors found for searchText:', searchText);
+            }
+          } catch (error) {
+            console.error('[MCP] Error fetching doctors:', error);
+          }
+        }
+        
+        console.log('[MCP] About to inject doctors into widget HTML, count:', doctorCount);
+        
+        // Store preloaded doctors in memory
+        currentSearchContext = searchText;
+        global.preloadedDoctors = doctorsHtml;
+        global.preloadedDoctorsData = doctors;
+        global.preloadedCount = doctorCount;
+        
+        // Inject preloaded doctors directly into widget HTML as JSON
+        let customWidgetHtml = widgetHtml.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL);
+        const widgetParamsScript = '<script>' +
+          'window.WIDGET_PARAMS = ' + JSON.stringify({ searchText, preloadedResults: doctorCount > 0 }) + ';' +
+          'window.PRELOADED_DOCTORS_DATA = ' + JSON.stringify(doctors || []) + ';' +
+          'console.log("[INJECTED] searchText:", ' + JSON.stringify(searchText) + ');' +
+          'console.log("[INJECTED] preloadedResults:", ' + (doctorCount > 0) + ');' +
+          'console.log("[INJECTED] PRELOADED_DOCTORS_DATA:", window.PRELOADED_DOCTORS_DATA);' +
+          '</script>';
+        customWidgetHtml = customWidgetHtml.replace('</head>', widgetParamsScript + '</head>');
+        
+        console.log('[MCP] Returning structured JSON with', doctorCount, 'doctors');
+        
+        // Format doctor data for ChatGPT's native card rendering
+        const doctorCards = doctors.map(d => ({
+          id: String(d.doctorId || d.medicalFacilityDoctorSpecialityRTId),
+          full_name: d.doctorName?.trim() || 'Unknown',
+          specialty: d.medicalSpecialityText?.trim() || searchText,
+          clinic_name: d.medicalFacilityName?.trim() || 'Unknown Clinic',
+          city: 'Jeddah',
+          address: d.medicalFacilityName?.trim() || '',
+          rating: d.ratingAvg || 0,
+          review_count: 0,
+          price: {
+            amount: parseFloat(d.priceRateMin) || 0,
+            currency: d.currencyCode || 'SAR'
+          },
+          next_available: d.timeslotCount > 0 ? 'Available now' : 'No slots',
+          available_slots: d.timeslotCount || 0,
+          booking_url: `https://e-tabeb-chat-gpt-p.vercel.app/?doctor=${d.doctorId}`,
+          telehealth: false,
+          image: d.picURL01 || 'https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png'
+        }));
+        
+        const responseData = {
+          type: 'doctor_search_results',
+          query: {
+            specialty: searchText,
+            city: 'Jeddah'
+          },
+          total_results: doctorCount,
+          doctors: doctorCards
+        };
+        
         response = {
           jsonrpc: '2.0',
           id: request.id,
@@ -709,7 +1285,167 @@ app.post('/mcp-v2', async (req, res) => {
             content: [
               {
                 type: 'text',
-                text: 'Opening the eTabeb booking widget. You can search for doctors, view available appointments, and complete your booking securely.',
+                text: JSON.stringify(responseData, null, 2)
+              },
+            ],
+            isError: false,
+          },
+        };
+        } catch (error) {
+          console.error('[MCP] FATAL ERROR in open_booking_widget_v2:', error);
+          response = {
+            jsonrpc: '2.0',
+            id: request.id,
+            result: {
+              content: [{ type: 'text', text: `Error: ${error.message}` }],
+              isError: true,
+            },
+          };
+        }
+      } else if (name === 'lookup_specialty') {
+        // Lookup specialty ID from name
+        const specialtyName = args?.specialtyName || '';
+        try {
+          const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/SpecialitiesList', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          const specialties = await apiResponse.json();
+          
+          // Find matching specialty (case-insensitive, partial match)
+          const match = specialties.find(s => 
+            s.text.toLowerCase().includes(specialtyName.toLowerCase()) ||
+            s.text1.toLowerCase().includes(specialtyName.toLowerCase())
+          );
+          
+          if (match) {
+            response = {
+              jsonrpc: '2.0',
+              id: request.id,
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify({ 
+                      specialtyId: match.value,
+                      specialtyCode: match.code,
+                      specialtyName: match.text,
+                      specialtyNameArabic: match.text1
+                    }),
+                  },
+                ],
+                isError: false,
+              },
+            };
+          } else {
+            response = {
+              jsonrpc: '2.0',
+              id: request.id,
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify({ error: 'Specialty not found', searchTerm: specialtyName }),
+                  },
+                ],
+                isError: false,
+              },
+            };
+          }
+        } catch (error) {
+          console.error('[MCP] Error looking up specialty:', error);
+          response = {
+            jsonrpc: '2.0',
+            id: request.id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({ error: 'Failed to lookup specialty' }),
+                },
+              ],
+              isError: false,
+            },
+          };
+        }
+      } else if (name === 'lookup_facility') {
+        // Lookup facility ID from name
+        const facilityName = args?.facilityName || '';
+        try {
+          const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/HospitalList', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          const facilities = await apiResponse.json();
+          
+          // Find matching facility (case-insensitive, partial match)
+          const match = facilities.find(f => 
+            f.text.toLowerCase().includes(facilityName.toLowerCase()) ||
+            f.text1.toLowerCase().includes(facilityName.toLowerCase())
+          );
+          
+          if (match) {
+            response = {
+              jsonrpc: '2.0',
+              id: request.id,
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify({ 
+                      facilityId: match.value,
+                      facilityCode: match.code,
+                      facilityName: match.text,
+                      facilityNameArabic: match.text1
+                    }),
+                  },
+                ],
+                isError: false,
+              },
+            };
+          } else {
+            response = {
+              jsonrpc: '2.0',
+              id: request.id,
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify({ error: 'Facility not found', searchTerm: facilityName }),
+                  },
+                ],
+                isError: false,
+              },
+            };
+          }
+        } catch (error) {
+          console.error('[MCP] Error looking up facility:', error);
+          response = {
+            jsonrpc: '2.0',
+            id: request.id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({ error: 'Failed to lookup facility' }),
+                },
+              ],
+              isError: false,
+            },
+          };
+        }
+      } else if (name === 'get_search_context') {
+        // Return the current search context for the widget
+        response = {
+          jsonrpc: '2.0',
+          id: request.id,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({ searchText: currentSearchContext }),
               },
             ],
             isError: false,
@@ -747,7 +1483,7 @@ app.post('/mcp-v2', async (req, res) => {
               };
             } else {
               const doctorList = doctors.slice(0, limit).map((d, i) => 
-                `${i + 1}. **${d.name}** - ${d.specialty}\n   📍 ${d.facility}\n   ⭐ ${d.rating} | 💰 ${d.price} ${d.currency}\n   Doctor ID: ${d.id}`
+                `${i + 1}. **${d.name}** - ${d.specialty}\n   📍 ${d.facility}\n   ⭐ ${d.rating} | 💰 ${d.price} ${d.currency}`
               ).join('\n\n');
               
               response = {
@@ -757,7 +1493,7 @@ app.post('/mcp-v2', async (req, res) => {
                   content: [
                     {
                       type: 'text',
-                      text: `Found ${doctors.length} doctors:\n\n${doctorList}`,
+                      text: `I found ${doctors.length} doctors matching "${searchText}":\n\n${doctorList}\n\nWould you like to proceed with booking an appointment? I can open the booking system for you to select a time slot.`,
                     },
                   ],
                   isError: false,

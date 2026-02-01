@@ -126,54 +126,69 @@
     }
     
     .doctor-card {
-      padding: 16px;
+      display: flex;
+      gap: 16px;
+      padding: 20px;
       border: 1px solid #2d3748;
-      border-radius: 12px;
+      border-radius: 16px;
       background: #243447;
       cursor: pointer;
       transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
     }
     
     .doctor-card:hover {
       border-color: #3EBFA5;
       background: #2d3f54;
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(62, 191, 165, 0.2);
+      transform: translateY(-4px);
+      box-shadow: 0 8px 24px rgba(62, 191, 165, 0.25);
+    }
+    
+    .doctor-card img {
+      width: 80px;
+      height: 80px;
+      border-radius: 12px;
+      object-fit: cover;
+      flex-shrink: 0;
+      border: 2px solid #2d3748;
+    }
+    
+    .doctor-info {
+      flex: 1;
+      min-width: 0;
     }
     
     .doctor-name {
-      font-weight: 600;
+      font-weight: 700;
       color: #fff;
-      font-size: 15px;
-      margin-bottom: 4px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      font-size: 17px;
+      margin-bottom: 6px;
+      line-height: 1.3;
     }
     
     .doctor-specialty {
-      color: #94a3b8;
-      font-size: 13px;
-      margin-bottom: 4px;
+      color: #3EBFA5;
+      font-size: 14px;
+      margin-bottom: 8px;
+      font-weight: 500;
     }
     
     .doctor-facility {
-      color: #64748b;
-      font-size: 12px;
-      margin-bottom: 8px;
+      color: #94a3b8;
+      font-size: 13px;
+      margin-bottom: 12px;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
     }
     
     .doctor-meta {
       display: flex;
-      justify-content: space-between;
+      gap: 16px;
       align-items: center;
       font-size: 13px;
-      margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px solid #2d3748;
+      margin-top: 4px;
     }
     
     .doctor-rating {
@@ -181,11 +196,102 @@
       display: flex;
       align-items: center;
       gap: 4px;
+      background: rgba(251, 191, 36, 0.1);
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-weight: 600;
     }
     
     .doctor-price {
       color: #3EBFA5;
+      font-weight: 700;
+      font-size: 16px;
+    }
+    
+    .doctor-availability {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: rgba(62, 191, 165, 0.15);
+      color: #3EBFA5;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
       font-weight: 600;
+    }
+    
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid #2d3748;
+    }
+    
+    .results-header h3 {
+      color: #fff;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    
+    .results-count {
+      color: #94a3b8;
+      font-size: 14px;
+      background: #2d3748;
+      padding: 6px 14px;
+      border-radius: 20px;
+    }
+    
+    .doctor-accordion {
+      margin-bottom: 16px;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #243447;
+      border: 1px solid #2d3748;
+      transition: all 0.3s;
+    }
+    
+    .doctor-accordion:hover {
+      border-color: #3EBFA5;
+    }
+    
+    .doctor-details {
+      background: #1a2332;
+      animation: slideDown 0.3s ease-out;
+    }
+    
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        max-height: 0;
+      }
+      to {
+        opacity: 1;
+        max-height: 1000px;
+      }
+    }
+    
+    .date-btn {
+      padding: 12px 16px;
+      background: #243447;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      color: #fff;
+      cursor: pointer;
+      transition: all 0.3s;
+      min-width: 120px;
+      text-align: center;
+    }
+    
+    .date-btn:hover {
+      background: #2d3f54;
+      border-color: #3EBFA5;
+    }
+    
+    .date-btn.active {
+      background: #3EBFA5;
+      border-color: #3EBFA5;
     }
     
     .date-group {
@@ -430,6 +536,52 @@
       return colors[index];
     }
     
+    function renderDoctorResults() {
+      const doctorCount = doctors.length;
+      const searchText = window.WIDGET_PARAMS?.searchText || 'doctors';
+      
+      container.innerHTML = `
+        <div class="header">
+          <img src="https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png?v=2" alt="eTabeb" class="logo" style="height: 60px; width: auto; margin: 0 auto 16px; display: block;" />
+          <h1>Book Appointment</h1>
+        </div>
+        <div class="content">
+          <div class="results-header">
+            <h3>Available ${searchText} Doctors</h3>
+            <span class="results-count">${doctorCount} doctors found</span>
+          </div>
+          <div id="doctor-list"></div>
+        </div>
+      `;
+      
+      renderDoctorCards();
+    }
+    
+    function renderDoctorCards() {
+      const doctorList = document.getElementById('doctor-list');
+      if (!doctorList) return;
+      
+      doctorList.innerHTML = doctors.map((doctor, index) => `
+        <div class="doctor-accordion" id="doctor-${index}">
+          <div class="doctor-card" onclick="toggleDoctorDetails(${index})">
+            <div class="doctor-availability">${doctor.timeslotCount || 0} slots</div>
+            <img src="${doctor.picURL01 || 'https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png'}" alt="${doctor.doctorName}" onerror="this.src='https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png'">
+            <div class="doctor-info">
+              <div class="doctor-name">${doctor.doctorName}</div>
+              <div class="doctor-specialty">${doctor.medicalSpecialityText}</div>
+              <div class="doctor-facility">📍 ${doctor.medicalFacilityName}</div>
+              <div class="doctor-meta">
+                <span class="doctor-rating">⭐ ${doctor.ratingAvg || doctor.ratingText || 'New'}</span>
+                <span class="doctor-price">${doctor.priceRateMin || '0'} ${doctor.currencyCode}</span>
+              </div>
+            </div>
+            <div style="margin-left: auto; color: #3EBFA5; font-size: 24px; transition: transform 0.3s;" class="expand-icon">›</div>
+          </div>
+          <div class="doctor-details" id="details-${index}" style="display: none;"></div>
+        </div>
+      `).join('');
+    }
+    
     function renderSearchUI() {
       container.innerHTML = `
         <div class="header">
@@ -476,14 +628,14 @@
         // Call private search_doctors tool
         const result = await window.openai.callTool('search_doctors', {
           searchText: searchText,
-          limit: 10
+          limit: 50
         });
         
-        // Fetch doctors from API directly for structured data
+        // Fetch doctors from API directly for structured data - fetch up to 50 results
         const response = await fetch(`${baseUrl}/api/doctors`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ SearchText: searchText, CityId: 1, limit: 10 })
+          body: JSON.stringify({ SearchText: searchText, CityId: 1, limit: 50 })
         });
         doctors = await response.json();
         
@@ -562,82 +714,78 @@
     
     let selectedDate = null;
     
-    function renderTimeslots() {
+    function renderTimeslotsInline(doctorIndex) {
+      const detailsDiv = document.getElementById(`details-${doctorIndex}`);
       if (!timeslots || timeslots.length === 0) {
-        document.getElementById('results').innerHTML = `
-          <button onclick="renderSearchUI()" class="btn btn-secondary">← Back</button>
-          <div class="loading">No available appointments</div>
-        `;
+        detailsDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #94a3b8;">No available appointments</div>';
         return;
       }
       
       // Group timeslots by date
       const grouped = {};
       timeslots.forEach(slot => {
-        if (!grouped[slot.date]) {
-          grouped[slot.date] = [];
-        }
+        if (!grouped[slot.date]) grouped[slot.date] = [];
         grouped[slot.date].push(slot);
       });
       
-      const dates = Object.keys(grouped).slice(0, 10);
-      if (!selectedDate && dates.length > 0) {
-        selectedDate = dates[0];
-      }
+      const dates = Object.keys(grouped).slice(0, 5);
+      if (!selectedDate && dates.length > 0) selectedDate = dates[0];
       
-      const header = `
-        <div style="background: #243447; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
-          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-            <div style="width: 40px; height: 40px; background: #3EBFA5; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700;">2</div>
-            <h3 style="color: #fff; margin: 0; font-size: 18px;">Available Slots</h3>
-          </div>
-          <p style="color: #94a3b8; margin: 0; font-size: 14px;">Appointments for ${selectedDoctor.name}</p>
+      const dateButtons = dates.map(date => `
+        <button onclick="selectDate('${date}', ${doctorIndex})" class="date-btn ${date === selectedDate ? 'active' : ''}" id="date-btn-${date}">
+          <div style="font-size: 12px; color: #94a3b8;">📅</div>
+          <div style="font-weight: 600; margin-top: 4px;">${date}</div>
+          <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">${grouped[date].length} slots</div>
+        </button>
+      `).join('');
+      
+      const slots = grouped[selectedDate].map(slot => `
+        <div class="timeslot-card" onclick="selectTimeslot(${slot.timeslotRTId}, '${slot.date}', '${slot.time}', ${doctorIndex})">
+          <div class="timeslot-time">${slot.time}</div>
         </div>
-      `;
+      `).join('');
       
-      const dateAccordions = dates.map(date => {
-        const slots = grouped[date].map(slot => `
-          <div class="timeslot-card" onclick="selectTimeslot(${slot.timeslotRTId}, '${slot.date}', '${slot.time}')">
-            <div class="timeslot-time">${slot.time}</div>
+      detailsDiv.innerHTML = `
+        <div style="padding: 20px; background: #1a2332; border-top: 1px solid #2d3748;">
+          <h4 style="color: #fff; margin-bottom: 16px; font-size: 16px;">Select Date</h4>
+          <div style="display: flex; gap: 12px; overflow-x: auto; margin-bottom: 20px; padding-bottom: 8px;">
+            ${dateButtons}
           </div>
-        `).join('');
-        
-        const isActive = date === selectedDate;
-        const slotCount = grouped[date].length;
-        
-        return `
-          <div class="date-accordion">
-            <button class="date-header-btn ${isActive ? 'active' : ''}" onclick="toggleDate('${date}')">
-              <span>📅 ${date}</span>
-              <span style="color: #94a3b8; font-size: 13px; font-weight: normal;">${slotCount} slots ${isActive ? '▲' : '▼'}</span>
-            </button>
-            <div class="date-content ${isActive ? 'active' : ''}">
-              <div class="timeslot-grid">${slots}</div>
-            </div>
-          </div>
-        `;
-      }).join('');
-      
-      document.getElementById('results').innerHTML = `
-        ${header}
-        ${dateAccordions}
-        <button onclick="renderSearchUI()" class="btn btn-secondary" style="margin-top: 24px; width: 100%;">← Back to Search</button>
+          <h4 style="color: #fff; margin-bottom: 16px; font-size: 16px;">Available Times</h4>
+          <div class="timeslot-grid" id="timeslot-grid-${doctorIndex}">${slots}</div>
+        </div>
       `;
     }
     
-    window.toggleDate = function(date) {
-      selectedDate = selectedDate === date ? null : date;
-      renderTimeslots();
+    window.selectDate = function(date, doctorIndex) {
+      selectedDate = date;
+      document.querySelectorAll('.date-btn').forEach(btn => btn.classList.remove('active'));
+      document.getElementById(`date-btn-${date}`).classList.add('active');
+      
+      const grouped = {};
+      timeslots.forEach(slot => {
+        if (!grouped[slot.date]) grouped[slot.date] = [];
+        grouped[slot.date].push(slot);
+      });
+      
+      const slots = grouped[date].map(slot => `
+        <div class="timeslot-card" onclick="selectTimeslot(${slot.timeslotRTId}, '${slot.date}', '${slot.time}', ${doctorIndex})">
+          <div class="timeslot-time">${slot.time}</div>
+        </div>
+      `).join('');
+      
+      document.getElementById(`timeslot-grid-${doctorIndex}`).innerHTML = slots;
     };
     
     let selectedTimeslot = null;
     
-    window.selectTimeslot = function(timeslotId, date, time) {
+    window.selectTimeslot = function(timeslotId, date, time, doctorIndex) {
       selectedTimeslot = { timeslotId, date, time };
-      renderBookingForm();
+      renderBookingFormInline(doctorIndex);
     };
     
-    function renderBookingForm() {
+    function renderBookingFormInline(doctorIndex) {
+      const detailsDiv = document.getElementById(`details-${doctorIndex}`);
       const header = `
         <div style="background: #243447; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
           <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
@@ -652,23 +800,24 @@
         </div>
       `;
       
-      document.getElementById('results').innerHTML = `
-        ${header}
-        <div class="security-note">
-          🔒 Your information is secure. We'll verify your phone number and complete the booking.
-        </div>
-        <div class="form-group">
-          <label class="form-label" style="color: #fff; display: block; margin-bottom: 8px; font-weight: 500;">Phone Number</label>
-          <div style="display: flex; gap: 12px;">
-            <select id="country-select" style="padding: 14px 16px; border: 1px solid #2d3748; border-radius: 12px; background: #2d3748; color: #fff; font-size: 15px; min-width: 140px;">
-              ${countryCodes.map(c => `<option value="${c.countryId}">${c.countryKey}</option>`).join('')}
-            </select>
-            <input type="tel" id="phone-input" placeholder="5XXXXXXXX" style="flex: 1;" />
+      detailsDiv.innerHTML = `
+        <div style="padding: 20px; background: #1a2332; border-top: 1px solid #2d3748;">
+          ${header}
+          <div class="security-note">
+            🔒 Your information is secure. We'll verify your phone number and complete the booking.
           </div>
+          <div class="form-group">
+            <label class="form-label" style="color: #fff; display: block; margin-bottom: 8px; font-weight: 500;">Phone Number</label>
+            <div style="display: flex; gap: 12px;">
+              <select id="country-select" style="padding: 14px 16px; border: 1px solid #2d3748; border-radius: 12px; background: #2d3748; color: #fff; font-size: 15px; min-width: 140px;">
+                ${countryCodes.map(c => `<option value="${c.countryId}">${c.countryKey}</option>`).join('')}
+              </select>
+              <input type="tel" id="phone-input" placeholder="5XXXXXXXX" style="flex: 1;" />
+            </div>
+          </div>
+          <button id="send-otp-btn" onclick="sendOTP()" class="btn" style="width: 100%; margin-bottom: 12px;">Send OTP</button>
+          <div id="otp-section" style="display: none;"></div>
         </div>
-        <button id="send-otp-btn" onclick="sendOTP()" class="btn" style="width: 100%; margin-bottom: 12px;">Send OTP</button>
-        <button onclick="renderTimeslots()" class="btn btn-secondary" style="width: 100%;">← Back to Slots</button>
-        <div id="otp-section" style="display: none;"></div>
       `;
     }
     
@@ -866,9 +1015,48 @@
     }
     
     // Initialize
-    fetchCountryCodes().then(() => {
-      renderSearchUI();
-    });
+    async function initializeWidget() {
+      await fetchCountryCodes();
+      
+      console.log('=== WIDGET INITIALIZATION ===');
+      console.log('window.WIDGET_PARAMS:', window.WIDGET_PARAMS);
+      console.log('window.PRELOADED_DOCTORS_DATA exists:', !!window.PRELOADED_DOCTORS_DATA);
+      console.log('window.PRELOADED_DOCTORS_DATA:', window.PRELOADED_DOCTORS_DATA);
+      console.log('preloadedResults flag:', window.WIDGET_PARAMS?.preloadedResults);
+      
+      // Check if we have preloaded doctor results
+      if (window.PRELOADED_DOCTORS_DATA && window.PRELOADED_DOCTORS_DATA.length > 0) {
+        console.log('✅ Displaying preloaded doctor results');
+        
+        // Use preloaded doctor data directly
+        doctors = window.PRELOADED_DOCTORS_DATA;
+        console.log('Loaded doctors:', doctors.length);
+        console.log('First doctor:', doctors[0]);
+        
+        // Show doctor cards immediately - Booking.com style
+        renderDoctorResults();
+      } else {
+        // Fallback to auto-search if no preloaded results
+        const autoSearchText = window.WIDGET_PARAMS?.searchText || '';
+        console.log('Widget initialized with search text:', autoSearchText);
+        
+        if (autoSearchText && autoSearchText.trim()) {
+          console.log('Auto-searching for:', autoSearchText);
+          renderSearchUI();
+          setTimeout(() => {
+            const searchInput = document.getElementById('search-input');
+            if (searchInput) {
+              searchInput.value = autoSearchText;
+              handleSearch();
+            }
+          }, 300);
+        } else {
+          renderSearchUI();
+        }
+      }
+    }
+    
+    initializeWidget();
   </script>
 </body>
 </html>
