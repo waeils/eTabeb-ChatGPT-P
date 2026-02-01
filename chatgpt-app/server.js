@@ -506,12 +506,17 @@ app.post('/mcp', async (req, res) => {
         let doctors = [];
         if (searchText) {
           try {
+            // Strip common titles from search text (Dr., Doctor, Prof., etc.)
+            const cleanedSearchText = searchText
+              .replace(/\b(dr\.?|doctor|prof\.?|professor)\s+/gi, '')
+              .trim();
+            
             // Use DoctorList API with searchText parameter
-            console.log('[MCP] Fetching doctors from DoctorList API with searchText:', searchText);
+            console.log('[MCP] Fetching doctors from DoctorList API with searchText:', cleanedSearchText);
             const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ searchText: searchText }),
+              body: JSON.stringify({ searchText: cleanedSearchText }),
             });
             doctors = await apiResponse.json();
             
@@ -740,12 +745,17 @@ app.post('/mcp', async (req, res) => {
         }
         
         try {
+          // Strip common titles from search text (Dr., Doctor, Prof., etc.)
+          const cleanedSearchText = searchText
+            .replace(/\b(dr\.?|doctor|prof\.?|professor)\s+/gi, '')
+            .trim();
+          
           // Use DoctorList API with searchText parameter
-          console.log('[MCP] Fetching doctors from DoctorList API with searchText:', searchText);
+          console.log('[MCP] Fetching doctors from DoctorList API with searchText:', cleanedSearchText);
           const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ searchText: searchText }),
+            body: JSON.stringify({ searchText: cleanedSearchText }),
           });
           const doctors = await apiResponse.json();
           
@@ -1263,12 +1273,17 @@ app.post('/mcp-v2', async (req, res) => {
         let doctors = [];
         if (searchText) {
           try {
+            // Strip common titles from search text (Dr., Doctor, Prof., etc.)
+            const cleanedSearchText = searchText
+              .replace(/\b(dr\.?|doctor|prof\.?|professor)\s+/gi, '')
+              .trim();
+            
             // Use DoctorList API with searchText parameter
-            console.log('[MCP] Fetching doctors from DoctorList API with searchText:', searchText);
+            console.log('[MCP] Fetching doctors from DoctorList API with searchText:', cleanedSearchText);
             const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ searchText: searchText }),
+              body: JSON.stringify({ searchText: cleanedSearchText }),
             });
             doctors = await apiResponse.json();
             

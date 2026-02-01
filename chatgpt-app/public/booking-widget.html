@@ -13,7 +13,7 @@
     
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #1a2332;
+      background: transparent;
       overflow-y: auto;
       overflow-x: hidden;
       color: #fff;
@@ -22,14 +22,15 @@
     #booking-container {
       width: 100%;
       min-height: 100vh;
-      padding: 20px;
+      padding: 0;
+      background: transparent;
     }
     
     .header {
       text-align: center;
-      padding: 24px 0;
-      background: #1a2332;
-      border-bottom: 1px solid #2d3748;
+      padding: 24px 20px;
+      background: transparent;
+      border-bottom: none;
     }
     
     .logo {
@@ -56,10 +57,10 @@
     }
     
     .content {
-      background: #1a2332;
-      padding: 24px;
-      max-width: 900px;
-      margin: 0 auto;
+      background: transparent;
+      padding: 0 20px 24px;
+      max-width: 100%;
+      margin: 0;
     }
     
     .search-box {
@@ -118,115 +119,230 @@
       background: #e0e0e0;
     }
     
-    .doctor-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 16px;
-      margin-top: 20px;
+    /* Booking.com-style results row */
+    .doctor-grid-wrapper {
+      position: relative;
+      margin: 0 -20px;
+      padding: 0 20px;
     }
-    
-    .doctor-card {
+
+    .doctor-grid {
       display: flex;
       gap: 16px;
-      padding: 20px;
-      border: 1px solid #2d3748;
-      border-radius: 16px;
-      background: #243447;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 8px 0 16px;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.2) transparent;
+      scroll-behavior: smooth;
+    }
+
+    .scroll-arrow {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
       cursor: pointer;
-      transition: all 0.3s;
-      position: relative;
-      overflow: hidden;
+      z-index: 10;
+      transition: all 0.2s;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
-    
-    .doctor-card:hover {
-      border-color: #3EBFA5;
-      background: #2d3f54;
-      transform: translateY(-4px);
-      box-shadow: 0 8px 24px rgba(62, 191, 165, 0.25);
+
+    .scroll-arrow:hover {
+      background: #fff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      transform: translateY(-50%) scale(1.05);
     }
-    
-    .doctor-card img {
-      width: 80px;
-      height: 80px;
+
+    .scroll-arrow.left {
+      left: 10px;
+    }
+
+    .scroll-arrow.right {
+      right: 10px;
+    }
+
+    .scroll-arrow svg {
+      width: 20px;
+      height: 20px;
+      fill: #1a1a1a;
+    }
+
+    .scroll-arrow.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .doctor-grid::-webkit-scrollbar { 
+      height: 6px;
+    }
+    .doctor-grid::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .doctor-grid::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.2);
+      border-radius: 999px;
+    }
+    .doctor-grid::-webkit-scrollbar-thumb:hover {
+      background: rgba(255,255,255,0.3);
+    }
+
+    /* Card container */
+    .doctor-accordion {
+      scroll-snap-align: start;
+      flex: 0 0 280px;
+      min-width: 280px;
+      max-width: 280px;
       border-radius: 12px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      transition: all 0.25s;
+      position: relative;
+    }
+
+    .doctor-accordion:hover {
+      border-color: rgba(62, 191, 165, 0.4);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    /* Clickable card */
+    .doctor-card {
+      cursor: pointer;
+      display: block;
+    }
+
+    .doctor-image {
+      width: 100%;
+      height: 160px;
       object-fit: cover;
-      flex-shrink: 0;
-      border: 2px solid #2d3748;
+      display: block;
+      background: rgba(0, 0, 0, 0.2);
     }
-    
-    .doctor-info {
-      flex: 1;
-      min-width: 0;
+
+    .doctor-card-body {
+      padding: 12px 14px 14px;
     }
-    
+
     .doctor-name {
-      font-weight: 700;
+      font-weight: 800;
       color: #fff;
-      font-size: 17px;
+      font-size: 16px;
+      line-height: 1.25;
       margin-bottom: 6px;
-      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      -webkit-box-orient: vertical;
     }
-    
+
     .doctor-specialty {
       color: #3EBFA5;
-      font-size: 14px;
+      font-size: 13px;
       margin-bottom: 8px;
-      font-weight: 500;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
-    
+
     .doctor-facility {
       color: #94a3b8;
-      font-size: 13px;
-      margin-bottom: 12px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
+      font-size: 12.5px;
+      margin-bottom: 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      -webkit-box-orient: vertical;
+      white-space: normal;
+      line-height: 1.4;
     }
-    
+
     .doctor-meta {
       display: flex;
-      gap: 16px;
       align-items: center;
-      font-size: 13px;
-      margin-top: 4px;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 10px;
     }
-    
+
     .doctor-rating {
       color: #fbbf24;
-      display: flex;
+      display: inline-flex;
       align-items: center;
       gap: 4px;
-      background: rgba(251, 191, 36, 0.1);
-      padding: 4px 10px;
-      border-radius: 8px;
-      font-weight: 600;
+      background: rgba(251, 191, 36, 0.15);
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 12px;
+      white-space: nowrap;
     }
-    
+
     .doctor-price {
       color: #3EBFA5;
-      font-weight: 700;
-      font-size: 16px;
+      font-weight: 800;
+      font-size: 14px;
+      white-space: nowrap;
     }
-    
+
     .doctor-availability {
       position: absolute;
-      top: 16px;
-      right: 16px;
-      background: rgba(62, 191, 165, 0.15);
-      color: #3EBFA5;
-      padding: 6px 12px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 600;
+      top: 10px;
+      right: 10px;
+      background: rgba(62, 191, 165, 0.95);
+      color: #fff;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    .doctor-cta {
+      margin-top: 12px;
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      background: #1976B2;
+      color: #fff;
+      font-weight: 800;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .doctor-cta:hover {
+      background: #1565C0;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 14px rgba(25, 118, 178, 0.25);
     }
     
     .results-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 20px;
-      padding-bottom: 16px;
-      border-bottom: 2px solid #2d3748;
+      margin-bottom: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
     
     .results-header h3 {
@@ -236,11 +352,11 @@
     }
     
     .results-count {
-      color: #94a3b8;
-      font-size: 14px;
-      background: #2d3748;
-      padding: 6px 14px;
-      border-radius: 20px;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 13px;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 5px 12px;
+      border-radius: 16px;
     }
     
     .doctor-accordion {
@@ -257,8 +373,10 @@
     }
     
     .doctor-details {
-      background: #1a2332;
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
       animation: slideDown 0.3s ease-out;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
     }
     
     @keyframes slideDown {
@@ -273,25 +391,55 @@
     }
     
     .date-btn {
-      padding: 12px 16px;
-      background: #243447;
-      border: 1px solid #2d3748;
-      border-radius: 12px;
+      padding: 18px 16px;
+      background: rgba(255, 255, 255, 0.08);
       color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
       cursor: pointer;
-      transition: all 0.3s;
-      min-width: 120px;
+      transition: all 0.2s;
       text-align: center;
+      min-width: 110px;
     }
     
     .date-btn:hover {
-      background: #2d3f54;
-      border-color: #3EBFA5;
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(62, 191, 165, 0.5);
+      transform: translateY(-2px);
     }
     
     .date-btn.active {
       background: #3EBFA5;
       border-color: #3EBFA5;
+      box-shadow: 0 4px 12px rgba(62, 191, 165, 0.3);
+    }
+    
+    .date-btn .date-day {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.7);
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    
+    .date-btn.active .date-day {
+      color: rgba(255, 255, 255, 0.95);
+    }
+    
+    .date-btn .date-number {
+      font-size: 20px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+    
+    .date-btn .date-slots {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.6);
+      font-weight: 600;
+    }
+    
+    .date-btn.active .date-slots {
+      color: #fff;
     }
     
     .date-group {
@@ -351,19 +499,29 @@
     }
     
     .timeslot-card {
-      padding: 12px;
-      border: 1px solid #2d3748;
-      border-radius: 8px;
-      background: #243447;
+      padding: 14px 18px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
       cursor: pointer;
+      transition: all 0.2s;
+      font-size: 15px;
+      font-weight: 600;
       text-align: center;
-      transition: all 0.3s;
     }
     
     .timeslot-card:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(62, 191, 165, 0.5);
+      transform: translateY(-1px);
+    }
+    
+    .timeslot-card.selected {
+      background: #3EBFA5;
       border-color: #3EBFA5;
-      background: #2d3f54;
-      transform: translateY(-2px);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(62, 191, 165, 0.3);
     }
     
     .timeslot-time {
@@ -605,6 +763,9 @@
             <h3>Available ${searchText} Doctors</h3>
             <span class="results-count">${doctorCount} doctors found</span>
           </div>
+          <div style="color:#94a3b8;font-size:13px;margin:6px 0 14px;">
+            Scroll to browse. Tap a doctor card to view timeslots.
+          </div>
           <div id="doctor-list"></div>
         </div>
       `;
@@ -616,25 +777,102 @@
       const doctorList = document.getElementById('doctor-list');
       if (!doctorList) return;
       
-      doctorList.innerHTML = doctors.map((doctor, index) => `
-        <div class="doctor-accordion" id="doctor-${index}">
-          <div class="doctor-card" onclick="toggleDoctorDetails(${index})">
-            <div class="doctor-availability">${doctor.timeslotCount || 0} slots</div>
-            <img src="${doctor.picURL01 || 'https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png'}" alt="${doctor.doctorName}" onerror="this.src='https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png'">
-            <div class="doctor-info">
-              <div class="doctor-name">${doctor.doctorName}</div>
-              <div class="doctor-specialty">${doctor.medicalSpecialityText}</div>
-              <div class="doctor-facility">📍 ${doctor.medicalFacilityName}</div>
-              <div class="doctor-meta">
-                <span class="doctor-rating">⭐ ${doctor.ratingAvg || doctor.ratingText || 'New'}</span>
-                <span class="doctor-price">${doctor.priceRateMin || '0'} ${doctor.currencyCode}</span>
+      doctorList.innerHTML = `
+      <div class="doctor-grid-wrapper">
+        <button class="scroll-arrow left" id="scroll-left" onclick="scrollDoctors('left')">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+          </svg>
+        </button>
+        <button class="scroll-arrow right" id="scroll-right" onclick="scrollDoctors('right')">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+          </svg>
+        </button>
+        <div class="doctor-grid" id="doctor-grid-scroll">${doctors.map((doctor, index) => {
+        const img = doctor.picURL01 || 'https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png';
+        const name = doctor.doctorName || 'Doctor';
+        const specialty = doctor.medicalSpecialityText || 'Specialty';
+        const facility = doctor.medicalFacilityName || '';
+        const rating = doctor.ratingAvg || doctor.ratingText || 'New';
+        const price = (doctor.priceRateMin ?? '0');
+        const currency = doctor.currencyCode || 'SAR';
+        const slots = doctor.timeslotCount || 0;
+        
+        // Calculate nearest appointment date
+        // Try multiple possible field names from API
+        let nearestDate = '';
+        const nextDateField = doctor.nextAvailableDate || doctor.nextAvailableAppointment || doctor.nearestDate || doctor.firstAvailableDate;
+        
+        if (nextDateField) {
+          const dateObj = new Date(nextDateField);
+          const today = new Date();
+          const tomorrow = new Date(today);
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          
+          if (dateObj.toDateString() === today.toDateString()) {
+            nearestDate = 'Available Today';
+          } else if (dateObj.toDateString() === tomorrow.toDateString()) {
+            nearestDate = 'Available Tomorrow';
+          } else {
+            nearestDate = `Available ${dateObj.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}`;
+          }
+        } else if (index === 0) {
+          // Log first doctor's fields to debug
+          console.log('Doctor fields:', Object.keys(doctor));
+          console.log('Full doctor object:', doctor);
+        }
+
+        return `
+          <div class="doctor-accordion" id="doctor-${index}">
+            <div class="doctor-availability">${slots} slots</div>
+
+            <div class="doctor-card" onclick="toggleDoctorDetails(${index})">
+              <img class="doctor-image"
+                   src="${img}"
+                   alt="${name}"
+                   onerror="this.src='https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png'">
+
+              <div class="doctor-card-body">
+                <div class="doctor-name">${name}</div>
+                <div class="doctor-specialty">${specialty}</div>
+                <div class="doctor-facility">${facility}</div>
+                ${nearestDate ? `<div style="color: #3EBFA5; font-size: 13px; margin-top: 4px; font-weight: 600;">${nearestDate}</div>` : ''}
+
+                <div class="doctor-meta">
+                  <span class="doctor-rating">${rating}</span>
+                  ${price && price !== '0' ? `<span class="doctor-price">${price} ${currency}</span>` : ''}
+                </div>
+
+                <button class="doctor-cta" type="button">View timeslots</button>
               </div>
             </div>
-            <div style="margin-left: auto; color: #3EBFA5; font-size: 24px; transition: transform 0.3s;" class="expand-icon">›</div>
+
+            <div class="doctor-details" id="details-${index}"></div>
           </div>
-          <div class="doctor-details" id="details-${index}" style="display: none;"></div>
-        </div>
-      `).join('');
+        `;
+      }).join('')}</div>
+      </div>`;
+      
+      // Add scroll event listener to show/hide arrows
+      setTimeout(() => {
+        const grid = document.getElementById('doctor-grid-scroll');
+        const leftArrow = document.getElementById('scroll-left');
+        const rightArrow = document.getElementById('scroll-right');
+        
+        if (grid && leftArrow && rightArrow) {
+          const updateArrows = () => {
+            const scrollLeft = grid.scrollLeft;
+            const maxScroll = grid.scrollWidth - grid.clientWidth;
+            
+            leftArrow.classList.toggle('hidden', scrollLeft <= 0);
+            rightArrow.classList.toggle('hidden', scrollLeft >= maxScroll - 1);
+          };
+          
+          grid.addEventListener('scroll', updateArrows);
+          updateArrows();
+        }
+      }, 100);
     }
     
     function renderSearchUI() {
@@ -650,8 +888,7 @@
         </div>
         <div class="content">
           <div style="background: #243447; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
-            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-              <div style="width: 40px; height: 40px; background: #3EBFA5; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700;">1</div>
+            <div style="margin-bottom: 16px;">
               <h3 style="color: #fff; margin: 0; font-size: 18px;">Select Doctor</h3>
             </div>
             <div class="search-box">
@@ -765,9 +1002,23 @@
     
     let selectedDate = null;
     
+    // Helper function to extract start time from time range
+    // API already sends times in 12-hour format with AM/PM (e.g., "5:50 AM - 6:00 AM")
+    function formatTime12Hour(timeStr) {
+      if (!timeStr) return timeStr;
+      
+      // If it's a range (e.g., "5:50 AM - 6:00 AM"), extract just the start time
+      if (timeStr.includes(' - ')) {
+        return timeStr.split(' - ')[0].trim();
+      }
+      
+      // Otherwise return as-is (already formatted)
+      return timeStr;
+    }
+    
     function renderTimeslotsInline(doctorIndex) {
       const detailsDiv = document.getElementById(`details-${doctorIndex}`);
-      if (!timeslots || timeslots.length === 0) {
+      if (!timeslots || !Array.isArray(timeslots) || timeslots.length === 0) {
         detailsDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #94a3b8;">No available appointments</div>';
         return;
       }
@@ -779,22 +1030,44 @@
         grouped[slot.date].push(slot);
       });
       
-      const dates = Object.keys(grouped).slice(0, 5);
+      // Sort dates chronologically (earliest first)
+      const dates = Object.keys(grouped).sort((a, b) => {
+        return new Date(a) - new Date(b);
+      }).slice(0, 5);
       if (!selectedDate && dates.length > 0) selectedDate = dates[0];
       
-      const dateButtons = dates.map(date => `
-        <button onclick="selectDate('${date}', ${doctorIndex})" class="date-btn ${date === selectedDate ? 'active' : ''}" id="date-btn-${date}">
-          <div style="font-size: 12px; color: #94a3b8;">📅</div>
-          <div style="font-weight: 600; margin-top: 4px;">${date}</div>
-          <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">${grouped[date].length} slots</div>
-        </button>
-      `).join('');
+      const dateButtons = dates.map((date, idx) => {
+        const dateObj = new Date(date);
+        const today = new Date();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        
+        let dayLabel;
+        if (dateObj.toDateString() === today.toDateString()) {
+          dayLabel = 'Today';
+        } else if (dateObj.toDateString() === tomorrow.toDateString()) {
+          dayLabel = 'Tomorrow';
+        } else {
+          dayLabel = dateObj.toLocaleDateString('en-US', {weekday: 'short'});
+        }
+        
+        return `
+          <button onclick="selectDate('${date}', ${doctorIndex})" class="date-btn ${date === selectedDate ? 'active' : ''}" id="date-btn-${date}">
+            <div class="date-day">${dayLabel}</div>
+            <div class="date-number">${dateObj.getDate()}</div>
+            <div class="date-slots">${grouped[date].length} slots</div>
+          </button>
+        `;
+      }).join('');
       
-      const slots = grouped[selectedDate].map(slot => `
-        <div class="timeslot-card" onclick="selectTimeslot(${slot.timeslotRTId}, '${slot.date}', '${slot.time}', ${doctorIndex})">
-          <div class="timeslot-time">${slot.time}</div>
-        </div>
-      `).join('');
+      const slots = grouped[selectedDate].map(slot => {
+        const formattedTime = formatTime12Hour(slot.time);
+        return `
+          <div class="timeslot-card" onclick="selectTimeslot(${slot.timeslotRTId}, '${slot.date}', '${formattedTime}', ${doctorIndex})">
+            <div class="timeslot-time">${formattedTime}</div>
+          </div>
+        `;
+      }).join('');
       
       detailsDiv.innerHTML = `
         <div style="padding: 20px; background: #1a2332; border-top: 1px solid #2d3748;">
@@ -819,11 +1092,14 @@
         grouped[slot.date].push(slot);
       });
       
-      const slots = grouped[date].map(slot => `
-        <div class="timeslot-card" onclick="selectTimeslot(${slot.timeslotRTId}, '${slot.date}', '${slot.time}', ${doctorIndex})">
-          <div class="timeslot-time">${slot.time}</div>
-        </div>
-      `).join('');
+      const slots = grouped[date].map(slot => {
+        const formattedTime = formatTime12Hour(slot.time);
+        return `
+          <div class="timeslot-card" onclick="selectTimeslot(${slot.timeslotRTId}, '${slot.date}', '${formattedTime}', ${doctorIndex})">
+            <div class="timeslot-time">${formattedTime}</div>
+          </div>
+        `;
+      }).join('');
       
       document.getElementById(`timeslot-grid-${doctorIndex}`).innerHTML = slots;
     };
@@ -837,37 +1113,62 @@
     
     function renderBookingFormInline(doctorIndex) {
       const detailsDiv = document.getElementById(`details-${doctorIndex}`);
-      const header = `
-        <div style="background: #243447; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
-          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-            <div style="width: 40px; height: 40px; background: #3EBFA5; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700;">3</div>
-            <h3 style="color: #fff; margin: 0; font-size: 18px;">Complete Booking</h3>
-          </div>
-          <div style="color: #94a3b8; font-size: 14px;">
-            <p style="margin: 0 0 4px 0;"><strong style="color: #fff;">${selectedDoctor.name}</strong></p>
-            <p style="margin: 0 0 4px 0;">${selectedDoctor.specialty} • ${selectedDoctor.facility}</p>
-            <p style="margin: 0; color: #3EBFA5;">📅 ${selectedTimeslot.date} at ${selectedTimeslot.time}</p>
-          </div>
-        </div>
-      `;
       
       detailsDiv.innerHTML = `
-        <div style="padding: 20px; background: #1a2332; border-top: 1px solid #2d3748;">
-          ${header}
-          <div class="security-note">
-            🔒 Your information is secure. We'll verify your phone number and complete the booking.
-          </div>
-          <div class="form-group">
-            <label class="form-label" style="color: #fff; display: block; margin-bottom: 8px; font-weight: 500;">Phone Number</label>
-            <div style="display: flex; gap: 12px;">
-              <select id="country-select" style="padding: 14px 16px; border: 1px solid #2d3748; border-radius: 12px; background: #2d3748; color: #fff; font-size: 15px; min-width: 140px;">
-                ${countryCodes.map(c => `<option value="${c.countryId}">${c.countryKey}</option>`).join('')}
-              </select>
-              <input type="tel" id="phone-input" placeholder="5XXXXXXXX" style="flex: 1;" />
+        <div style="padding: 24px; background: rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px); border-top: 1px solid rgba(255, 255, 255, 0.1);">
+          <div style="background: rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 24px; margin-bottom: 20px; border: 1px solid rgba(255, 255, 255, 0.12);">
+            <h3 style="color: #fff; margin: 0 0 20px 0; font-size: 20px; font-weight: 700;">Booking Summary</h3>
+            
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div>
+                  <div style="color: rgba(255, 255, 255, 0.6); font-size: 13px; margin-bottom: 4px;">Doctor</div>
+                  <div style="color: #fff; font-size: 16px; font-weight: 600;">${selectedDoctor.doctorName || selectedDoctor.name}</div>
+                  <div style="color: #3EBFA5; font-size: 14px; margin-top: 2px;">${selectedDoctor.medicalSpecialityText || selectedDoctor.specialty}</div>
+                </div>
+                <button onclick="renderTimeslotsInline(${doctorIndex})" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='rgba(255, 255, 255, 0.15)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'">Edit</button>
+              </div>
+              
+              <div style="height: 1px; background: rgba(255, 255, 255, 0.1);"></div>
+              
+              <div>
+                <div style="color: rgba(255, 255, 255, 0.6); font-size: 13px; margin-bottom: 4px;">Facility</div>
+                <div style="color: #fff; font-size: 15px;">${selectedDoctor.medicalFacilityName || selectedDoctor.facility}</div>
+              </div>
+              
+              <div style="height: 1px; background: rgba(255, 255, 255, 0.1);"></div>
+              
+              <div style="display: flex; gap: 24px;">
+                <div style="flex: 1;">
+                  <div style="color: rgba(255, 255, 255, 0.6); font-size: 13px; margin-bottom: 4px;">Date</div>
+                  <div style="color: #fff; font-size: 15px; font-weight: 600;">${selectedTimeslot.date}</div>
+                </div>
+                <div style="flex: 1;">
+                  <div style="color: rgba(255, 255, 255, 0.6); font-size: 13px; margin-bottom: 4px;">Time</div>
+                  <div style="color: #fff; font-size: 15px; font-weight: 600;">${selectedTimeslot.time}</div>
+                </div>
+              </div>
             </div>
           </div>
-          <button id="send-otp-btn" onclick="sendOTP()" class="btn" style="width: 100%; margin-bottom: 12px;">Send OTP</button>
-          <div id="otp-section" style="display: none;"></div>
+          
+          <div style="background: rgba(62, 191, 165, 0.1); border: 1px solid rgba(62, 191, 165, 0.3); border-radius: 12px; padding: 16px; margin-bottom: 20px;">
+            <div style="color: #3EBFA5; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Next Step</div>
+            <div style="color: rgba(255, 255, 255, 0.8); font-size: 14px; line-height: 1.5;">Enter your phone number to receive an OTP and complete your booking.</div>
+          </div>
+          
+          <div style="margin-bottom: 16px;">
+            <label style="color: #fff; display: block; margin-bottom: 10px; font-weight: 600; font-size: 15px;">Phone Number</label>
+            <div style="display: flex; gap: 12px; align-items: stretch;">
+              <select id="country-select" style="padding: 14px 12px; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 15px; width: 100px; flex-shrink: 0; cursor: pointer;">
+                ${countryCodes.map(c => `<option value="${c.countryId}">${c.countryKey}</option>`).join('')}
+              </select>
+              <input type="tel" id="phone-input" placeholder="5XXXXXXXX" style="flex: 1; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 15px; min-width: 0;" />
+            </div>
+          </div>
+          
+          <button onclick="sendOTP()" class="btn" style="width: 100%; padding: 16px; font-size: 16px; font-weight: 700; background: #3EBFA5; border: none; border-radius: 12px; color: #fff; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#35a892'" onmouseout="this.style.background='#3EBFA5'">Continue to Verification</button>
+          
+          <div id="otp-section"></div>
         </div>
       `;
     }
@@ -875,12 +1176,14 @@
     window.sendOTP = async function() {
       const phone = document.getElementById('phone-input').value.trim();
       const countryId = document.getElementById('country-select').value;
-      const btn = document.getElementById('send-otp-btn');
+      const btn = event?.target || document.querySelector('button[onclick="sendOTP()"]');
       
       if (!phone) {
-        console.error('Please enter your phone number');
+        alert('Please enter your phone number');
         return;
       }
+      
+      if (!btn) return;
       
       btn.disabled = true;
       btn.innerHTML = '<span style="display: inline-flex; align-items: center; gap: 8px;"><svg width="16" height="16" viewBox="0 0 24 24" style="animation: spin 1s linear infinite;"><circle cx="12" cy="12" r="10" stroke="white" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg> Sending...</span>';
@@ -926,14 +1229,23 @@
     };
     
     function showOTPInput(signOTPId, phone) {
-      document.getElementById('send-otp-btn').style.display = 'none';
-      document.getElementById('otp-section').style.display = 'block';
-      document.getElementById('otp-section').innerHTML = `
-        <div class="form-group">
-          <label class="form-label" style="color: #fff; display: block; margin-bottom: 8px; font-weight: 500;">Enter OTP Code</label>
-          <input type="text" id="otp-input" placeholder="Enter 6-digit code" maxlength="6" style="width: 100%;" />
+      const otpSection = document.getElementById('otp-section');
+      if (!otpSection) return;
+      
+      // Hide the send OTP button
+      const sendBtn = document.querySelector('button[onclick="sendOTP()"]');
+      if (sendBtn) sendBtn.style.display = 'none';
+      
+      otpSection.innerHTML = `
+        <div style="margin-top: 20px; padding: 20px; background: rgba(62, 191, 165, 0.1); border: 1px solid rgba(62, 191, 165, 0.3); border-radius: 12px;">
+          <div style="color: #3EBFA5; font-size: 14px; font-weight: 600; margin-bottom: 12px;">OTP Sent!</div>
+          <div style="color: rgba(255, 255, 255, 0.8); font-size: 13px; margin-bottom: 16px;">Please check your phone for the verification code.</div>
+          
+          <label style="color: #fff; display: block; margin-bottom: 10px; font-weight: 600; font-size: 15px;">Enter OTP Code</label>
+          <input type="text" id="otp-input" placeholder="Enter 4-digit code" maxlength="4" style="width: 100%; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 15px; margin-bottom: 16px;" />
+          
+          <button id="verify-btn" onclick="verifyOTP('${signOTPId}', '${phone}')" style="width: 100%; padding: 16px; font-size: 16px; font-weight: 700; background: #3EBFA5; border: none; border-radius: 12px; color: #fff; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#35a892'" onmouseout="this.style.background='#3EBFA5'">Verify & Continue</button>
         </div>
-        <button onclick="verifyOTP('${signOTPId}', '${phone}')" class="btn" style="width: 100%;">Verify & Continue</button>
       `;
     }
     
@@ -996,17 +1308,19 @@
         return;
       }
       
-      const patientCards = patients.map((p, i) => `
-        <div class="patient-card" onclick="selectPatient(${i}, '${phone}')" style="padding: 16px; background: #243447; border: 1px solid #2d3748; border-radius: 12px; margin-bottom: 12px; cursor: pointer; transition: all 0.3s;" onmouseover="this.style.borderColor='#3EBFA5'" onmouseout="this.style.borderColor='#2d3748'">
-          <div style="font-weight: 600; color: #fff; font-size: 16px; margin-bottom: 4px;">${p.patientName}</div>
-          <div style="color: #94a3b8; font-size: 14px;">ID: ${p.residentIdentities || p.patientId || 'N/A'}</div>
-        </div>
+      const patientOptions = patients.map((p, i) => `
+        <option value="${i}">${p.patientName} - ID: ${p.residentIdentities || p.patientId || 'N/A'}</option>
       `).join('');
       
       document.getElementById('otp-section').innerHTML = `
-        <div class="form-group">
-          <label class="form-label" style="color: #fff; display: block; margin-bottom: 12px; font-weight: 500; font-size: 16px;">Select Patient</label>
-          ${patientCards}
+        <div style="margin-top: 20px; padding: 20px; background: rgba(62, 191, 165, 0.1); border: 1px solid rgba(62, 191, 165, 0.3); border-radius: 12px;">
+          <label style="color: #fff; display: block; margin-bottom: 10px; font-weight: 600; font-size: 15px;">Select Patient</label>
+          <select id="patient-select" style="width: 100%; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 15px; margin-bottom: 16px; cursor: pointer;">
+            <option value="" disabled selected>Choose a patient...</option>
+            ${patientOptions}
+          </select>
+          
+          <button onclick="confirmPatientSelection('${phone}')" style="width: 100%; padding: 16px; font-size: 16px; font-weight: 700; background: #3EBFA5; border: none; border-radius: 12px; color: #fff; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#35a892'" onmouseout="this.style.background='#3EBFA5'">Confirm Booking</button>
         </div>
       `;
       
@@ -1014,6 +1328,75 @@
       window.phoneNumber = phone;
     }
     
+    window.confirmPatientSelection = async function(phone) {
+      const selectEl = document.getElementById('patient-select');
+      const index = parseInt(selectEl.value);
+      
+      if (isNaN(index) || index < 0) {
+        alert('Please select a patient');
+        return;
+      }
+      
+      await selectPatient(index, phone);
+    };
+    
+    window.scrollDoctors = function(direction) {
+      const grid = document.getElementById('doctor-grid-scroll');
+      if (!grid) return;
+      
+      const scrollAmount = 300; // Scroll by 300px
+      const currentScroll = grid.scrollLeft;
+      
+      if (direction === 'left') {
+        grid.scrollTo({
+          left: currentScroll - scrollAmount,
+          behavior: 'smooth'
+        });
+      } else {
+        grid.scrollTo({
+          left: currentScroll + scrollAmount,
+          behavior: 'smooth'
+        });
+      }
+    };
+
+    window.toggleDoctorDetails = async function(index) {
+      const detailsDiv = document.getElementById(`details-${index}`);
+      if (!detailsDiv) return;
+
+      const open = detailsDiv.style.display === 'block';
+
+      // close all
+      document.querySelectorAll('.doctor-details').forEach(el => el.style.display = 'none');
+
+      if (open) return;
+
+      const doctor = doctors[index];
+      if (!doctor) return;
+
+      selectedDoctor = doctor;
+      timeslots = []; // Reset timeslots when switching doctors
+      selectedDate = null; // Reset selected date
+
+      detailsDiv.style.display = 'block';
+      detailsDiv.innerHTML = '<div class="loading">Loading timeslots...</div>';
+
+      try {
+        const doctorId = doctor.medicalFacilityDoctorSpecialityRTId || doctor.id;
+
+        const response = await fetch(`${baseUrl}/api/timeslots`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ medicalFacilityDoctorSpecialityRTId: doctorId })
+        });
+
+        timeslots = await response.json();
+        renderTimeslotsInline(index);
+      } catch (err) {
+        detailsDiv.innerHTML = `<div class="error">Failed to load timeslots: ${err.message}</div>`;
+      }
+    };
+
     window.selectPatient = async function(index, phone) {
       const patient = window.patientsData[index];
       
@@ -1051,16 +1434,26 @@
     };
     
     function showSuccess() {
-      document.getElementById('results').innerHTML = `
-        <div class="success-message">
-          <div class="success-icon">✅</div>
-          <div class="success-title">Booking Confirmed!</div>
-          <div class="success-text">
-            Your appointment with ${selectedDoctor.name}<br/>
-            on ${selectedTimeslot.date} at ${selectedTimeslot.time}<br/>
+      const doctorName = selectedDoctor.doctorName || selectedDoctor.name || 'the doctor';
+      
+      container.innerHTML = `
+        <div class="header">
+          <img src="https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png?v=2" alt="eTabeb" class="logo" style="height: 60px; width: auto; margin: 0 auto 16px; display: block;" />
+          <h1>Booking Confirmed!</h1>
+        </div>
+        <div class="content" style="text-align: center; padding: 40px 20px;">
+          <div style="font-size: 64px; margin-bottom: 24px;">✅</div>
+          <h2 style="color: #3EBFA5; font-size: 24px; font-weight: 700; margin-bottom: 16px;">Success!</h2>
+          <div style="color: rgba(255, 255, 255, 0.9); font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
+            Your appointment with <strong>${doctorName}</strong><br/>
+            on <strong>${selectedTimeslot.date}</strong> at <strong>${selectedTimeslot.time}</strong><br/>
             has been successfully booked.
           </div>
-          <button onclick="renderSearchUI()" class="btn" style="margin-top: 24px;">Book Another Appointment</button>
+          <div style="background: rgba(62, 191, 165, 0.1); border: 1px solid rgba(62, 191, 165, 0.3); border-radius: 12px; padding: 16px; margin-bottom: 24px;">
+            <div style="color: #3EBFA5; font-size: 14px; font-weight: 600; margin-bottom: 8px;">What's Next?</div>
+            <div style="color: rgba(255, 255, 255, 0.8); font-size: 14px;">You will receive a confirmation message shortly. Please arrive 10 minutes before your appointment time.</div>
+          </div>
+          <button onclick="location.reload()" style="padding: 16px 32px; font-size: 16px; font-weight: 700; background: #3EBFA5; border: none; border-radius: 12px; color: #fff; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#35a892'" onmouseout="this.style.background='#3EBFA5'">Book Another Appointment</button>
         </div>
       `;
     }
@@ -1110,7 +1503,9 @@
       } else if (searchText && searchText.trim()) {
         // No preloaded doctors but we have a valid searchText - fetch and render cards
         console.log('📡 Fetching doctors for:', searchText);
-        renderSearchUI();
+        
+        // Show loading state
+        container.innerHTML = '<div class="loading" style="text-align: center; padding: 40px; color: #fff;">Loading doctors...</div>';
         
         try {
           doctors = await searchDoctorsFromApi(searchText);
