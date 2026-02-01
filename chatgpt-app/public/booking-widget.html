@@ -478,6 +478,61 @@
     let currentSessionId = null; // Store sessionId globally
     let countryCodes = []; // Store country codes from API
     
+    // Check if a value is a template placeholder like {{searchText}}
+    function isTemplatePlaceholder(value) {
+      if (typeof value !== 'string') return false;
+      const v = value.trim();
+      return v.startsWith('{{') && v.endsWith('}}');
+    }
+
+    // Get searchText from MCP context when outputTemplate substitution fails
+    async function getSearchTextFromMcpContext() {
+      try {
+        if (!window.openai || typeof window.openai.callTool !== 'function') return '';
+        const resp = await window.openai.callTool('get_search_context', {});
+        const textItem = resp?.content?.find?.(c => c?.type === 'text');
+        if (!textItem?.text) return '';
+        const parsed = JSON.parse(textItem.text);
+        return (parsed?.searchText || '').trim();
+      } catch (e) {
+        console.error('get_search_context failed:', e);
+        return '';
+      }
+    }
+
+    // Normalize preloaded doctors injected by the MCP server
+    function getPreloadedDoctors() {
+      let preloaded = window.PRELOADED_DOCTORS_DATA;
+
+      // Some runtimes inject as a JSON string
+      if (typeof preloaded === 'string') {
+        try { preloaded = JSON.parse(preloaded); } catch { /* ignore */ }
+      }
+
+      // Some backends may wrap results
+      if (preloaded && typeof preloaded === 'object' && !Array.isArray(preloaded)) {
+        if (Array.isArray(preloaded.doctors)) return preloaded.doctors;
+        if (Array.isArray(preloaded.items)) return preloaded.items;
+      }
+
+      return Array.isArray(preloaded) ? preloaded : [];
+    }
+
+    // Fetch doctors directly from the official API (CSP already allows etapisd.etabeb.com)
+    async function searchDoctorsFromApi(searchText) {
+      const q = (searchText || '').trim();
+      if (!q) return [];
+
+      const res = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ searchText: q })
+      });
+
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    }
+    
     // Fetch country codes on load
     async function fetchCountryCodes() {
       try {
@@ -621,27 +676,23 @@
     async function handleSearch() {
       const searchText = document.getElementById('search-input').value.trim();
       if (!searchText) return;
-      
+
       document.getElementById('results').innerHTML = '<div class="loading">Searching...</div>';
-      
+
       try {
-        // Call private search_doctors tool
-        const result = await window.openai.callTool('search_doctors', {
-          searchText: searchText,
-          limit: 50
-        });
-        
-        // Fetch doctors from API directly for structured data - fetch up to 50 results
-        const response = await fetch(`${baseUrl}/api/doctors`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ SearchText: searchText, CityId: 1, limit: 50 })
-        });
-        doctors = await response.json();
-        
-        renderDoctors();
+        doctors = await searchDoctorsFromApi(searchText);
+
+        // Render Booking.com-style cards
+        if (doctors.length > 0) {
+          window.WIDGET_PARAMS = window.WIDGET_PARAMS || {};
+          window.WIDGET_PARAMS.searchText = searchText;
+          renderDoctorResults();
+        } else {
+          document.getElementById('results').innerHTML = '<div class="loading">No doctors found</div>';
+        }
       } catch (err) {
-        document.getElementById('results').innerHTML = `<p style="color: #d32f2f; text-align: center;">Error: ${err.message}</p>`;
+        document.getElementById('results').innerHTML =
+          `<p style="color: #d32f2f; text-align: center;">Error: ${err.message}</p>`;
       }
     }
     
@@ -1024,35 +1075,61 @@
       console.log('window.PRELOADED_DOCTORS_DATA:', window.PRELOADED_DOCTORS_DATA);
       console.log('preloadedResults flag:', window.WIDGET_PARAMS?.preloadedResults);
       
-      // Check if we have preloaded doctor results
-      if (window.PRELOADED_DOCTORS_DATA && window.PRELOADED_DOCTORS_DATA.length > 0) {
+      // Resolve searchText - handle template placeholder case
+      let searchText = window.WIDGET_PARAMS?.searchText || '';
+      console.log('Initial searchText:', searchText);
+      
+      if (!searchText || isTemplatePlaceholder(searchText)) {
+        console.log('⚠️ searchText is empty or placeholder, calling get_search_context...');
+        try {
+          const resolvedSearchText = await getSearchTextFromMcpContext();
+          if (resolvedSearchText) {
+            searchText = resolvedSearchText;
+            window.WIDGET_PARAMS = window.WIDGET_PARAMS || {};
+            window.WIDGET_PARAMS.searchText = searchText;
+            console.log('✅ Resolved searchText from MCP context:', searchText);
+          } else {
+            console.log('❌ Could not resolve searchText from MCP context');
+          }
+        } catch (err) {
+          console.error('❌ Error calling get_search_context:', err);
+          // Continue anyway - we'll show search UI if no data
+        }
+      }
+      
+      // Check if we have preloaded doctor results using normalized helper
+      const preloaded = getPreloadedDoctors();
+      if (preloaded.length > 0) {
         console.log('✅ Displaying preloaded doctor results');
-        
-        // Use preloaded doctor data directly
-        doctors = window.PRELOADED_DOCTORS_DATA;
+        doctors = preloaded;
         console.log('Loaded doctors:', doctors.length);
         console.log('First doctor:', doctors[0]);
         
         // Show doctor cards immediately - Booking.com style
         renderDoctorResults();
-      } else {
-        // Fallback to auto-search if no preloaded results
-        const autoSearchText = window.WIDGET_PARAMS?.searchText || '';
-        console.log('Widget initialized with search text:', autoSearchText);
+      } else if (searchText && searchText.trim()) {
+        // No preloaded doctors but we have a valid searchText - fetch and render cards
+        console.log('📡 Fetching doctors for:', searchText);
+        renderSearchUI();
         
-        if (autoSearchText && autoSearchText.trim()) {
-          console.log('Auto-searching for:', autoSearchText);
-          renderSearchUI();
-          setTimeout(() => {
-            const searchInput = document.getElementById('search-input');
-            if (searchInput) {
-              searchInput.value = autoSearchText;
-              handleSearch();
-            }
-          }, 300);
-        } else {
-          renderSearchUI();
+        try {
+          doctors = await searchDoctorsFromApi(searchText);
+          console.log('✅ Fetched doctors:', doctors.length);
+          
+          if (doctors.length > 0) {
+            renderDoctorResults();
+          } else {
+            document.getElementById('results').innerHTML = '<div class="loading">No doctors found for ' + searchText + '</div>';
+          }
+        } catch (e) {
+          console.error('❌ Error fetching doctors:', e);
+          document.getElementById('results').innerHTML =
+            `<p style="color: #d32f2f; text-align: center;">Error: ${e.message}</p>`;
         }
+      } else {
+        // No preloaded doctors and no searchText - show search UI
+        console.log('ℹ️ No preloaded doctors or searchText, showing search UI');
+        renderSearchUI();
       }
     }
     

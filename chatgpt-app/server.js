@@ -231,6 +231,7 @@ app.post('/mcp', async (req, res) => {
     
     // Route based on method - return data directly
     if (request.method === 'resources/list') {
+      console.log('🔍 SERVING resources/list from /mcp');
       response = {
         jsonrpc: '2.0',
         id: request.id,
@@ -241,29 +242,77 @@ app.post('/mcp', async (req, res) => {
               name: 'eTabeb Booking Widget',
               description: 'Interactive booking interface',
               mimeType: 'text/html',
+              _meta: {
+                'openai/widgetDescription': 'Search doctors and select a timeslot, then open the secure booking page.',
+                'openai/widgetDomain': 'mcp.etabeb.sa',
+                'openai/widgetCSP': {
+                  connect_domains: [
+                    'https://mcp.etabeb.sa',
+                    'https://e-tabeb-chat-gpt-p.vercel.app',
+                    'https://etapisd.etabeb.com',
+                  ],
+                  resource_domains: [
+                    'https://mcp.etabeb.sa',
+                    'https://e-tabeb-chat-gpt-p.vercel.app',
+                    'https://persistent.oaistatic.com',
+                    'https://api4web.etabeb.com',
+                  ],
+                  redirect_domains: [
+                    'https://e-tabeb-chat-gpt-p.vercel.app',
+                  ],
+                },
+              },
             },
           ],
         },
       };
     } else if (request.method === 'resources/read') {
+      console.log('🔍 SERVING resources/read from', req.path);
       const uri = request.params?.uri;
       if (uri && uri.startsWith('resource://booking-widget')) {
-        // Use stored context and preloaded doctors
-        const searchText = currentSearchContext || '';
-        const preloadedDoctorsData = global.preloadedDoctorsData || [];
+        // Parse searchText from the resource URI query string.
+        // This avoids relying on globals across serverless invocations.
+        let searchText = '';
+        try {
+          const parsed = new URL(uri.replace('resource://', 'https://resource.local/'));
+          searchText = (parsed.searchParams.get('searchText') || '').trim();
+        } catch {
+          searchText = '';
+        }
+        // Fallback to in-memory context (best-effort)
+        if (!searchText) searchText = (currentSearchContext || '').trim();
+
+        // Fetch doctors at render-time to ensure widget always has data
+        let preloadedDoctorsData = [];
+        try {
+          if (searchText) {
+            console.log('[MCP resources/read] Fetching doctors for searchText:', searchText);
+            const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ searchText }),
+            });
+            const doctors = await apiResponse.json();
+            if (Array.isArray(doctors)) preloadedDoctorsData = doctors;
+          }
+        } catch (error) {
+          console.error('[MCP resources/read] Error fetching doctors:', error);
+        }
+
         const hasPreloaded = preloadedDoctorsData.length > 0;
-        
         console.log('[MCP resources/read] Loading widget with:', { searchText, hasPreloaded, doctorCount: preloadedDoctorsData.length });
-        
+
         // Inject searchText and preloaded doctors into widget HTML as JSON
         let customWidgetHtml = widgetHtml.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL);
         const widgetParamsScript = `<script>
           window.WIDGET_PARAMS = { searchText: ${JSON.stringify(searchText)}, preloadedResults: ${hasPreloaded} };
           window.PRELOADED_DOCTORS_DATA = ${JSON.stringify(preloadedDoctorsData)};
+          console.log('[RESOURCES/READ] searchText:', window.WIDGET_PARAMS?.searchText);
+          console.log('[RESOURCES/READ] preloadedResults:', window.WIDGET_PARAMS?.preloadedResults);
           console.log('[RESOURCES/READ] Injected doctors:', window.PRELOADED_DOCTORS_DATA?.length || 0);
         </script>`;
         customWidgetHtml = customWidgetHtml.replace('</head>', `${widgetParamsScript}</head>`) + `<!-- Cache-bust: ${Date.now()} -->`;
-        
+
         response = {
           jsonrpc: '2.0',
           id: request.id,
@@ -304,6 +353,7 @@ app.post('/mcp', async (req, res) => {
         };
       }
     } else if (request.method === 'tools/list') {
+      console.log('🔍 SERVING tools/list from', req.path);
       response = {
         jsonrpc: '2.0',
         id: request.id,
@@ -311,7 +361,7 @@ app.post('/mcp', async (req, res) => {
           tools: [
             {
               name: 'open_booking_widget_v2',
-              description: 'Get available doctors for booking. Returns structured JSON with doctor cards data for UI rendering. Always use this to show doctor availability.',
+              description: 'Opens an interactive booking widget with available doctors. Use this to show doctor availability and let users book appointments.',
               inputSchema: {
                 type: 'object',
                 properties: {
@@ -323,8 +373,12 @@ app.post('/mcp', async (req, res) => {
                 required: ['searchText'],
               },
               _meta: {
-                'openai/toolInvocation/invoking': 'Searching for available doctors...',
-                'openai/toolInvocation/invoked': 'Found doctors. Displaying results.',
+                'openai/outputTemplate': 'resource://booking-widget?searchText={{searchText}}',
+                'openai/resultCanProduceWidget': true,
+                'openai/widgetAccessible': true,
+                'openai/toolInvocation/invoking': 'Opening booking widget...',
+                'openai/toolInvocation/invoked': 'Booking widget ready. Search for doctors and complete your booking.',
+                'openai/widgetDomain': 'mcp.etabeb.sa',
                 'openai/widgetCSP': {
                   resource_domains: [
                     'https://mcp.etabeb.sa',
@@ -492,43 +546,10 @@ app.post('/mcp', async (req, res) => {
         
         console.log('[MCP] About to inject doctors into widget HTML, count:', doctorCount);
         
-        // Store preloaded doctors in memory
+        // Do not store preloaded doctors in memory; only update search context
         currentSearchContext = searchText;
-        global.preloadedDoctors = doctorsHtml;
-        global.preloadedDoctorsData = doctors;
-        global.preloadedCount = doctorCount;
-        
-        // Format doctor data for ChatGPT's native card rendering
-        const doctorCards = doctors.map(d => ({
-          id: String(d.doctorId || d.medicalFacilityDoctorSpecialityRTId),
-          full_name: d.doctorName?.trim() || 'Unknown',
-          specialty: d.medicalSpecialityText?.trim() || searchText,
-          clinic_name: d.medicalFacilityName?.trim() || 'Unknown Clinic',
-          city: 'Jeddah',
-          address: d.medicalFacilityName?.trim() || '',
-          rating: d.ratingAvg || 0,
-          review_count: 0,
-          price: {
-            amount: parseFloat(d.priceRateMin) || 0,
-            currency: d.currencyCode || 'SAR'
-          },
-          next_available: d.timeslotCount > 0 ? 'Available now' : 'No slots',
-          available_slots: d.timeslotCount || 0,
-          booking_url: `https://e-tabeb-chat-gpt-p.vercel.app/?doctor=${d.doctorId}`,
-          telehealth: false,
-          image: d.picURL01 || 'https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png'
-        }));
-        
-        const responseData = {
-          type: 'doctor_search_results',
-          query: {
-            specialty: searchText,
-            city: 'Jeddah'
-          },
-          total_results: doctorCount,
-          doctors: doctorCards
-        };
-        
+
+        // Return simple text response - outputTemplate will handle opening the widget
         response = {
           jsonrpc: '2.0',
           id: request.id,
@@ -536,8 +557,8 @@ app.post('/mcp', async (req, res) => {
             content: [
               {
                 type: 'text',
-                text: JSON.stringify(responseData, null, 2)
-              },
+                text: `Opening booking widget with ${doctorCount} available ${searchText} doctors...`
+              }
             ],
             isError: false,
           },
@@ -967,6 +988,7 @@ app.post('/mcp-v2', async (req, res) => {
     
     // Route based on method - return data directly
     if (request.method === 'resources/list') {
+      console.log('🔍 SERVING resources/list from /mcp-v2');
       response = {
         jsonrpc: '2.0',
         id: request.id,
@@ -977,29 +999,77 @@ app.post('/mcp-v2', async (req, res) => {
               name: 'eTabeb Booking Widget',
               description: 'Interactive booking interface',
               mimeType: 'text/html',
+              _meta: {
+                'openai/widgetDescription': 'Search doctors and select a timeslot, then open the secure booking page.',
+                'openai/widgetDomain': 'mcp.etabeb.sa',
+                'openai/widgetCSP': {
+                  connect_domains: [
+                    'https://mcp.etabeb.sa',
+                    'https://e-tabeb-chat-gpt-p.vercel.app',
+                    'https://etapisd.etabeb.com',
+                  ],
+                  resource_domains: [
+                    'https://mcp.etabeb.sa',
+                    'https://e-tabeb-chat-gpt-p.vercel.app',
+                    'https://persistent.oaistatic.com',
+                    'https://api4web.etabeb.com',
+                  ],
+                  redirect_domains: [
+                    'https://e-tabeb-chat-gpt-p.vercel.app',
+                  ],
+                },
+              },
             },
           ],
         },
       };
     } else if (request.method === 'resources/read') {
+      console.log('🔍 SERVING resources/read from', req.path);
       const uri = request.params?.uri;
       if (uri && uri.startsWith('resource://booking-widget')) {
-        // Use stored context and preloaded doctors
-        const searchText = currentSearchContext || '';
-        const preloadedDoctorsData = global.preloadedDoctorsData || [];
+        // Parse searchText from the resource URI query string.
+        // This avoids relying on globals across serverless invocations.
+        let searchText = '';
+        try {
+          const parsed = new URL(uri.replace('resource://', 'https://resource.local/'));
+          searchText = (parsed.searchParams.get('searchText') || '').trim();
+        } catch {
+          searchText = '';
+        }
+        // Fallback to in-memory context (best-effort)
+        if (!searchText) searchText = (currentSearchContext || '').trim();
+
+        // Fetch doctors at render-time to ensure widget always has data
+        let preloadedDoctorsData = [];
+        try {
+          if (searchText) {
+            console.log('[MCP resources/read] Fetching doctors for searchText:', searchText);
+            const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ searchText }),
+            });
+            const doctors = await apiResponse.json();
+            if (Array.isArray(doctors)) preloadedDoctorsData = doctors;
+          }
+        } catch (error) {
+          console.error('[MCP resources/read] Error fetching doctors:', error);
+        }
+
         const hasPreloaded = preloadedDoctorsData.length > 0;
-        
         console.log('[MCP resources/read] Loading widget with:', { searchText, hasPreloaded, doctorCount: preloadedDoctorsData.length });
-        
+
         // Inject searchText and preloaded doctors into widget HTML as JSON
         let customWidgetHtml = widgetHtml.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL);
         const widgetParamsScript = `<script>
           window.WIDGET_PARAMS = { searchText: ${JSON.stringify(searchText)}, preloadedResults: ${hasPreloaded} };
           window.PRELOADED_DOCTORS_DATA = ${JSON.stringify(preloadedDoctorsData)};
+          console.log('[RESOURCES/READ] searchText:', window.WIDGET_PARAMS?.searchText);
+          console.log('[RESOURCES/READ] preloadedResults:', window.WIDGET_PARAMS?.preloadedResults);
           console.log('[RESOURCES/READ] Injected doctors:', window.PRELOADED_DOCTORS_DATA?.length || 0);
         </script>`;
         customWidgetHtml = customWidgetHtml.replace('</head>', `${widgetParamsScript}</head>`) + `<!-- Cache-bust: ${Date.now()} -->`;
-        
+
         response = {
           jsonrpc: '2.0',
           id: request.id,
@@ -1040,6 +1110,7 @@ app.post('/mcp-v2', async (req, res) => {
         };
       }
     } else if (request.method === 'tools/list') {
+      console.log('🔍 SERVING tools/list from', req.path);
       response = {
         jsonrpc: '2.0',
         id: request.id,
@@ -1047,7 +1118,7 @@ app.post('/mcp-v2', async (req, res) => {
           tools: [
             {
               name: 'open_booking_widget_v2',
-              description: 'Get available doctors for booking. Returns structured JSON with doctor cards data for UI rendering. Always use this to show doctor availability.',
+              description: 'Opens an interactive booking widget with available doctors. Use this to show doctor availability and let users book appointments.',
               inputSchema: {
                 type: 'object',
                 properties: {
@@ -1059,8 +1130,12 @@ app.post('/mcp-v2', async (req, res) => {
                 required: ['searchText'],
               },
               _meta: {
-                'openai/toolInvocation/invoking': 'Searching for available doctors...',
-                'openai/toolInvocation/invoked': 'Found doctors. Displaying results.',
+                'openai/outputTemplate': 'resource://booking-widget?searchText={{searchText}}',
+                'openai/resultCanProduceWidget': true,
+                'openai/widgetAccessible': true,
+                'openai/toolInvocation/invoking': 'Opening booking widget...',
+                'openai/toolInvocation/invoked': 'Booking widget ready. Search for doctors and complete your booking.',
+                'openai/widgetDomain': 'mcp.etabeb.sa',
                 'openai/widgetCSP': {
                   resource_domains: [
                     'https://mcp.etabeb.sa',
@@ -1228,56 +1303,10 @@ app.post('/mcp-v2', async (req, res) => {
         
         console.log('[MCP] About to inject doctors into widget HTML, count:', doctorCount);
         
-        // Store preloaded doctors in memory
+        // Do not store preloaded doctors in memory; only update search context
         currentSearchContext = searchText;
-        global.preloadedDoctors = doctorsHtml;
-        global.preloadedDoctorsData = doctors;
-        global.preloadedCount = doctorCount;
-        
-        // Inject preloaded doctors directly into widget HTML as JSON
-        let customWidgetHtml = widgetHtml.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL);
-        const widgetParamsScript = '<script>' +
-          'window.WIDGET_PARAMS = ' + JSON.stringify({ searchText, preloadedResults: doctorCount > 0 }) + ';' +
-          'window.PRELOADED_DOCTORS_DATA = ' + JSON.stringify(doctors || []) + ';' +
-          'console.log("[INJECTED] searchText:", ' + JSON.stringify(searchText) + ');' +
-          'console.log("[INJECTED] preloadedResults:", ' + (doctorCount > 0) + ');' +
-          'console.log("[INJECTED] PRELOADED_DOCTORS_DATA:", window.PRELOADED_DOCTORS_DATA);' +
-          '</script>';
-        customWidgetHtml = customWidgetHtml.replace('</head>', widgetParamsScript + '</head>');
-        
-        console.log('[MCP] Returning structured JSON with', doctorCount, 'doctors');
-        
-        // Format doctor data for ChatGPT's native card rendering
-        const doctorCards = doctors.map(d => ({
-          id: String(d.doctorId || d.medicalFacilityDoctorSpecialityRTId),
-          full_name: d.doctorName?.trim() || 'Unknown',
-          specialty: d.medicalSpecialityText?.trim() || searchText,
-          clinic_name: d.medicalFacilityName?.trim() || 'Unknown Clinic',
-          city: 'Jeddah',
-          address: d.medicalFacilityName?.trim() || '',
-          rating: d.ratingAvg || 0,
-          review_count: 0,
-          price: {
-            amount: parseFloat(d.priceRateMin) || 0,
-            currency: d.currencyCode || 'SAR'
-          },
-          next_available: d.timeslotCount > 0 ? 'Available now' : 'No slots',
-          available_slots: d.timeslotCount || 0,
-          booking_url: `https://e-tabeb-chat-gpt-p.vercel.app/?doctor=${d.doctorId}`,
-          telehealth: false,
-          image: d.picURL01 || 'https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png'
-        }));
-        
-        const responseData = {
-          type: 'doctor_search_results',
-          query: {
-            specialty: searchText,
-            city: 'Jeddah'
-          },
-          total_results: doctorCount,
-          doctors: doctorCards
-        };
-        
+
+        // Return simple text response - outputTemplate will handle opening the widget
         response = {
           jsonrpc: '2.0',
           id: request.id,
@@ -1285,8 +1314,8 @@ app.post('/mcp-v2', async (req, res) => {
             content: [
               {
                 type: 'text',
-                text: JSON.stringify(responseData, null, 2)
-              },
+                text: `Opening booking widget with ${doctorCount} available ${searchText} doctors...`
+              }
             ],
             isError: false,
           },
