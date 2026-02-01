@@ -1,0 +1,71 @@
+{
+  "name": "eTabeb Medical Booking Assistant",
+  "version": "1.0.0",
+  "description": "Book medical appointments with doctors across Saudi Arabia. Search by specialty, doctor name, or facility. Features real-time availability, OTP verification, and instant booking confirmation.",
+  "author": "eTabeb",
+  "homepage": "https://etabeb.com",
+  "repository": "https://github.com/etabeb/chatgpt-mcp",
+  "license": "MIT",
+  "mcp": {
+    "version": "1.0",
+    "transport": {
+      "type": "http",
+      "url": "https://mcp.etabeb.sa/mcp"
+    },
+    "capabilities": {
+      "tools": true,
+      "resources": true,
+      "prompts": false
+    }
+  },
+  "tools": [
+    {
+      "name": "search_doctors",
+      "description": "Search for available doctors by specialty (e.g., endocrinology, cardiology), doctor name, or medical facility name. Returns list of doctors with availability, ratings, and pricing."
+    },
+    {
+      "name": "open_booking_widget_v2",
+      "description": "Opens an interactive booking widget where users can view doctor profiles, select appointment times, enter phone number for OTP verification, and complete the booking process."
+    }
+  ],
+  "categories": [
+    "healthcare",
+    "booking",
+    "appointments",
+    "medical"
+  ],
+  "keywords": [
+    "doctor",
+    "appointment",
+    "booking",
+    "healthcare",
+    "saudi arabia",
+    "medical",
+    "clinic",
+    "hospital",
+    "endocrinology",
+    "otp verification"
+  ],
+  "privacy": {
+    "dataCollection": "Collects user phone numbers and patient information solely for appointment booking and verification purposes. All data is encrypted and handled in compliance with healthcare regulations.",
+    "dataRetention": "Patient data is retained as per Saudi healthcare regulations and HIPAA compliance standards.",
+    "thirdPartySharing": "Information is shared only with selected healthcare facilities for appointment confirmation. No data is sold to third parties."
+  },
+  "support": {
+    "email": "support@etabeb.com",
+    "url": "https://etabeb.com/support"
+  },
+  "screenshots": [
+    "https://etabeb.com/screenshots/doctor-search.png",
+    "https://etabeb.com/screenshots/booking-widget.png",
+    "https://etabeb.com/screenshots/otp-verification.png",
+    "https://etabeb.com/screenshots/booking-confirmation.png"
+  ],
+  "regions": [
+    "SA"
+  ],
+  "languages": [
+    "en",
+    "ar"
+  ]
+}
