@@ -270,17 +270,19 @@ app.post('/mcp', async (req, res) => {
       console.log('🔍 SERVING resources/read from', req.path);
       const uri = request.params?.uri;
       if (uri && uri.startsWith('resource://booking-widget')) {
-        // Parse searchText from the resource URI query string.
-        // This avoids relying on globals across serverless invocations.
-        let searchText = '';
-        try {
-          const parsed = new URL(uri.replace('resource://', 'https://resource.local/'));
-          searchText = (parsed.searchParams.get('searchText') || '').trim();
-        } catch {
-          searchText = '';
+        // Prioritize currentSearchContext (contains cleaned search text that worked)
+        // over URL parameter (contains original search text)
+        let searchText = (currentSearchContext || '').trim();
+        
+        // If currentSearchContext is empty, try URL parameter as fallback
+        if (!searchText) {
+          try {
+            const parsed = new URL(uri.replace('resource://', 'https://resource.local/'));
+            searchText = (parsed.searchParams.get('searchText') || '').trim();
+          } catch {
+            searchText = '';
+          }
         }
-        // Fallback to in-memory context (best-effort)
-        if (!searchText) searchText = (currentSearchContext || '').trim();
 
         // Fetch doctors at render-time to ensure widget always has data
         let preloadedDoctorsData = [];
@@ -506,19 +508,56 @@ app.post('/mcp', async (req, res) => {
         let doctors = [];
         if (searchText) {
           try {
-            // Strip common titles from search text (Dr., Doctor, Prof., etc.)
-            const cleanedSearchText = searchText
-              .replace(/\b(dr\.?|doctor|prof\.?|professor)\s+/gi, '')
+            // Clean search text by removing common words
+            console.log('[MCP] ===== WIDGET SEARCH TEXT CLEANING =====');
+            console.log('[MCP] Original searchText:', searchText);
+            
+            // First, remove only common words (keep titles for now)
+            let searchWithCommonWordsRemoved = searchText
+              .replace(/\b(appointment|appointments|book|booking|need|want|looking for|find|search|show me|with)\s+/gi, '')
+              .replace(/(موعد|مواعيد|احجز|حجز|ابحث|بحث|اريد|ابي|عند|مع)\s+/g, '')
+              .replace(/\s+(موعد|مواعيد|احجز|حجز|ابحث|بحث|اريد|ابي|عند|مع)/g, '')
               .trim();
             
-            // Use DoctorList API with searchText parameter
-            console.log('[MCP] Fetching doctors from DoctorList API with searchText:', cleanedSearchText);
-            const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
+            // Also prepare a version with titles removed
+            let searchWithTitlesRemoved = searchWithCommonWordsRemoved
+              .replace(/\b(dr\.?|doctor|prof\.?|professor)\s+/gi, '')
+              .replace(/(طبيب|دكتور|دكتورة|استشاري|بروفيسور)\s+/g, '')
+              .replace(/\s+(طبيب|دكتور|دكتورة|استشاري|بروفيسور)/g, '')
+              .replace(/\s+(doctor|doctors)$/gi, '')
+              .trim();
+            
+            console.log('[MCP] Search with common words removed:', searchWithCommonWordsRemoved);
+            console.log('[MCP] Search with titles also removed:', searchWithTitlesRemoved);
+            
+            // Try first search with titles kept (for name searches)
+            console.log('[MCP] Fetching doctors (attempt 1 - with titles):', searchWithCommonWordsRemoved);
+            let apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ searchText: cleanedSearchText }),
+              body: JSON.stringify({ searchText: searchWithCommonWordsRemoved }),
             });
             doctors = await apiResponse.json();
+            
+            // If no results and the two search terms are different, try without titles
+            if ((!doctors || doctors.length === 0) && searchWithCommonWordsRemoved !== searchWithTitlesRemoved) {
+              console.log('[MCP] No results with titles, trying without titles:', searchWithTitlesRemoved);
+              apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ searchText: searchWithTitlesRemoved }),
+              });
+              doctors = await apiResponse.json();
+              
+              // Update context to the version that worked
+              if (doctors && doctors.length > 0) {
+                currentSearchContext = searchWithTitlesRemoved;
+              }
+            } else {
+              currentSearchContext = searchWithCommonWordsRemoved;
+            }
+            
+            console.log('[MCP] ===== END WIDGET CLEANING =====');
             
             console.log('[MCP] Received doctors:', doctors?.length || 0);
             
@@ -550,10 +589,9 @@ app.post('/mcp', async (req, res) => {
         }
         
         console.log('[MCP] About to inject doctors into widget HTML, count:', doctorCount);
+        console.log('[MCP] currentSearchContext is set to:', currentSearchContext);
         
-        // Do not store preloaded doctors in memory; only update search context
-        currentSearchContext = searchText;
-
+        // currentSearchContext was already set in the cleaning logic above to the successful search term
         // Return simple text response - outputTemplate will handle opening the widget
         response = {
           jsonrpc: '2.0',
@@ -745,10 +783,32 @@ app.post('/mcp', async (req, res) => {
         }
         
         try {
-          // Strip common titles from search text (Dr., Doctor, Prof., etc.)
-          const cleanedSearchText = searchText
+          // Clean search text by removing common words and extracting the specialty/key term
+          console.log('[MCP] ===== SEARCH TEXT CLEANING =====');
+          console.log('[MCP] Original searchText:', searchText);
+          console.log('[MCP] Original length:', searchText.length);
+          console.log('[MCP] Original bytes:', Buffer.from(searchText).toString('hex'));
+          
+          let cleanedSearchText = searchText
+            // Remove English titles (Dr., Doctor, Prof., etc.)
             .replace(/\b(dr\.?|doctor|prof\.?|professor)\s+/gi, '')
+            // Remove Arabic doctor words (prefix position: "طبيب اسنان")
+            .replace(/(طبيب|دكتور|دكتورة|استشاري|بروفيسور)\s+/g, '')
+            // Remove Arabic doctor words (suffix position: "اسنان طبيب")
+            .replace(/\s+(طبيب|دكتور|دكتورة|استشاري|بروفيسور)/g, '')
+            // Remove English common words
+            .replace(/\b(appointment|appointments|book|booking|need|want|looking for|find|search|show me)\s+/gi, '')
+            // Remove Arabic common words
+            .replace(/(موعد|مواعيد|احجز|حجز|ابحث|بحث|اريد|ابي|عند)\s+/g, '')
+            .replace(/\s+(موعد|مواعيد|احجز|حجز|ابحث|بحث|اريد|ابي|عند)/g, '')
+            // Remove trailing "doctor" in English
+            .replace(/\s+(doctor|doctors)$/gi, '')
             .trim();
+          
+          console.log('[MCP] Cleaned searchText:', cleanedSearchText);
+          console.log('[MCP] Cleaned length:', cleanedSearchText.length);
+          console.log('[MCP] Cleaned bytes:', Buffer.from(cleanedSearchText).toString('hex'));
+          console.log('[MCP] ===== END CLEANING =====');
           
           // Use DoctorList API with searchText parameter
           console.log('[MCP] Fetching doctors from DoctorList API with searchText:', cleanedSearchText);
@@ -1037,17 +1097,19 @@ app.post('/mcp-v2', async (req, res) => {
       console.log('🔍 SERVING resources/read from', req.path);
       const uri = request.params?.uri;
       if (uri && uri.startsWith('resource://booking-widget')) {
-        // Parse searchText from the resource URI query string.
-        // This avoids relying on globals across serverless invocations.
-        let searchText = '';
-        try {
-          const parsed = new URL(uri.replace('resource://', 'https://resource.local/'));
-          searchText = (parsed.searchParams.get('searchText') || '').trim();
-        } catch {
-          searchText = '';
+        // Prioritize currentSearchContext (contains cleaned search text that worked)
+        // over URL parameter (contains original search text)
+        let searchText = (currentSearchContext || '').trim();
+        
+        // If currentSearchContext is empty, try URL parameter as fallback
+        if (!searchText) {
+          try {
+            const parsed = new URL(uri.replace('resource://', 'https://resource.local/'));
+            searchText = (parsed.searchParams.get('searchText') || '').trim();
+          } catch {
+            searchText = '';
+          }
         }
-        // Fallback to in-memory context (best-effort)
-        if (!searchText) searchText = (currentSearchContext || '').trim();
 
         // Fetch doctors at render-time to ensure widget always has data
         let preloadedDoctorsData = [];
@@ -1273,19 +1335,56 @@ app.post('/mcp-v2', async (req, res) => {
         let doctors = [];
         if (searchText) {
           try {
-            // Strip common titles from search text (Dr., Doctor, Prof., etc.)
-            const cleanedSearchText = searchText
-              .replace(/\b(dr\.?|doctor|prof\.?|professor)\s+/gi, '')
+            // Clean search text by removing common words
+            console.log('[MCP] ===== WIDGET SEARCH TEXT CLEANING =====');
+            console.log('[MCP] Original searchText:', searchText);
+            
+            // First, remove only common words (keep titles for now)
+            let searchWithCommonWordsRemoved = searchText
+              .replace(/\b(appointment|appointments|book|booking|need|want|looking for|find|search|show me|with)\s+/gi, '')
+              .replace(/(موعد|مواعيد|احجز|حجز|ابحث|بحث|اريد|ابي|عند|مع)\s+/g, '')
+              .replace(/\s+(موعد|مواعيد|احجز|حجز|ابحث|بحث|اريد|ابي|عند|مع)/g, '')
               .trim();
             
-            // Use DoctorList API with searchText parameter
-            console.log('[MCP] Fetching doctors from DoctorList API with searchText:', cleanedSearchText);
-            const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
+            // Also prepare a version with titles removed
+            let searchWithTitlesRemoved = searchWithCommonWordsRemoved
+              .replace(/\b(dr\.?|doctor|prof\.?|professor)\s+/gi, '')
+              .replace(/(طبيب|دكتور|دكتورة|استشاري|بروفيسور)\s+/g, '')
+              .replace(/\s+(طبيب|دكتور|دكتورة|استشاري|بروفيسور)/g, '')
+              .replace(/\s+(doctor|doctors)$/gi, '')
+              .trim();
+            
+            console.log('[MCP] Search with common words removed:', searchWithCommonWordsRemoved);
+            console.log('[MCP] Search with titles also removed:', searchWithTitlesRemoved);
+            
+            // Try first search with titles kept (for name searches)
+            console.log('[MCP] Fetching doctors (attempt 1 - with titles):', searchWithCommonWordsRemoved);
+            let apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ searchText: cleanedSearchText }),
+              body: JSON.stringify({ searchText: searchWithCommonWordsRemoved }),
             });
             doctors = await apiResponse.json();
+            
+            // If no results and the two search terms are different, try without titles
+            if ((!doctors || doctors.length === 0) && searchWithCommonWordsRemoved !== searchWithTitlesRemoved) {
+              console.log('[MCP] No results with titles, trying without titles:', searchWithTitlesRemoved);
+              apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ searchText: searchWithTitlesRemoved }),
+              });
+              doctors = await apiResponse.json();
+              
+              // Update context to the version that worked
+              if (doctors && doctors.length > 0) {
+                currentSearchContext = searchWithTitlesRemoved;
+              }
+            } else {
+              currentSearchContext = searchWithCommonWordsRemoved;
+            }
+            
+            console.log('[MCP] ===== END WIDGET CLEANING =====');
             
             console.log('[MCP] Received doctors:', doctors?.length || 0);
             
@@ -1317,10 +1416,9 @@ app.post('/mcp-v2', async (req, res) => {
         }
         
         console.log('[MCP] About to inject doctors into widget HTML, count:', doctorCount);
+        console.log('[MCP] currentSearchContext is set to:', currentSearchContext);
         
-        // Do not store preloaded doctors in memory; only update search context
-        currentSearchContext = searchText;
-
+        // currentSearchContext was already set in the cleaning logic above to the successful search term
         // Return simple text response - outputTemplate will handle opening the widget
         response = {
           jsonrpc: '2.0',
@@ -1509,10 +1607,29 @@ app.post('/mcp-v2', async (req, res) => {
           };
         } else {
           try {
+            // Clean search text by removing common words and extracting the specialty/key term
+            let cleanedSearchText = searchText
+              // Remove English titles (Dr., Doctor, Prof., etc.)
+              .replace(/\b(dr\.?|doctor|prof\.?|professor)\s+/gi, '')
+              // Remove Arabic titles and words (طبيب = doctor, دكتور = doctor, etc.)
+              .replace(/(طبيب|دكتور|دكتورة|استشاري|بروفيسور)\s+/g, '')
+              // Remove English common words (appointment, book, need, want, etc.)
+              .replace(/\b(appointment|appointments|book|booking|need|want|looking for|find|search|show me)\s+/gi, '')
+              // Remove Arabic common words (موعد = appointment, احجز = book, etc.)
+              .replace(/(موعد|مواعيد|احجز|حجز|ابحث|بحث|اريد|ابي|عند)\s+/g, '')
+              // Remove trailing "doctor" or "doctors" in English
+              .replace(/\s+(doctor|doctors)$/gi, '')
+              // Remove trailing Arabic doctor words
+              .replace(/\s+(طبيب|دكتور|دكتورة)$/g, '')
+              .trim();
+            
+            console.log('[MCP] Original searchText:', searchText);
+            console.log('[MCP] Cleaned searchText:', cleanedSearchText);
+            
             const apiResponse = await fetch(`${BOOKING_APP_URL}/api/doctors`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ SearchText: searchText, CityId: 1, limit }),
+              body: JSON.stringify({ SearchText: cleanedSearchText, CityId: 1, limit }),
             });
             const doctors = await apiResponse.json();
             
