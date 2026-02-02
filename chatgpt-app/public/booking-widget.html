@@ -177,6 +177,16 @@
       fill: #1a1a1a;
     }
 
+    /* RTL support for Arabic */
+    html[dir="rtl"] body { direction: rtl; text-align: right; }
+    html[dir="rtl"] .results-header { flex-direction: row-reverse; }
+    html[dir="rtl"] .search-box { direction: rtl; }
+    html[dir="rtl"] input { text-align: right; }
+    html[dir="rtl"] .doctor-availability { left: 12px; right: auto; }
+    html[dir="rtl"] .scroll-arrow.left { left: auto; right: 10px; }
+    html[dir="rtl"] .scroll-arrow.right { right: auto; left: 10px; }
+    html[dir="rtl"] .scroll-arrow svg { transform: scaleX(-1); }
+
     .scroll-arrow.hidden {
       opacity: 0;
       pointer-events: none;
@@ -620,14 +630,49 @@
       color: #666;
     }
   </style>
+  <script src="widget-translations.js"></script>
 </head>
 <body>
   <div id="booking-container"></div>
   
   <script>
-    console.log('🔄 Widget Version: 2026-01-30-22:27 - Fixed Country Mapping');
+    console.log('🔄 Widget Version: 2026-02-02-v2 - Arabic RTL Fixes');
     const container = document.getElementById('booking-container');
     const baseUrl = '{{BOOKING_APP_URL}}';
+    
+    // Arabic mode detection
+    function hasArabic(s) { return /[\u0600-\u06FF]/.test((s || '').trim()); }
+    
+    let SEARCH_TEXT = (window.WIDGET_PARAMS?.searchText || '').trim();
+    let AR_MODE = 
+      (window.WIDGET_PARAMS?.lang === 'ar') ||
+      hasArabic(SEARCH_TEXT) ||
+      ((navigator.language || '').toLowerCase().startsWith('ar'));
+    
+    // Function to update Arabic mode when searchText changes
+    function updateArabicMode(newSearchText) {
+      SEARCH_TEXT = newSearchText;
+      AR_MODE = 
+        (window.WIDGET_PARAMS?.lang === 'ar') ||
+        hasArabic(SEARCH_TEXT) ||
+        ((navigator.language || '').toLowerCase().startsWith('ar'));
+      
+      document.documentElement.lang = AR_MODE ? 'ar' : 'en';
+      document.documentElement.dir = AR_MODE ? 'rtl' : 'ltr';
+      
+      console.log('[LANG UPDATED]', { AR_MODE, SEARCH_TEXT, injectedLang: window.WIDGET_PARAMS?.lang });
+    }
+    
+    document.documentElement.lang = AR_MODE ? 'ar' : 'en';
+    document.documentElement.dir = AR_MODE ? 'rtl' : 'ltr';
+    
+    console.log('[LANG]', { AR_MODE, SEARCH_TEXT, injectedLang: window.WIDGET_PARAMS?.lang });
+    
+    // Helper to pick OTE field when Arabic mode is ON
+    function pick(eng, ote) {
+      const v = AR_MODE ? (ote ?? eng) : (eng ?? ote);
+      return (v ?? '').toString().trim();
+    }
     
     // State management
     let doctors = [];
@@ -688,7 +733,85 @@
       });
 
       const data = await res.json();
-      return Array.isArray(data) ? data : [];
+      if (!Array.isArray(data)) return [];
+      
+      console.log('API returned doctors:', data.length);
+      console.log('First doctor RAW from API:', data[0]);
+      console.log('First doctor has OTE fields?', {
+        doctorNameOTE: data[0]?.doctorNameOTE,
+        medicalSpecialityTextOTE: data[0]?.medicalSpecialityTextOTE,
+        medicalFacilityNameOTE: data[0]?.medicalFacilityNameOTE
+      });
+      
+      // Deduplicate doctors by DoctorId and merge facilities/specialties
+      const doctorMap = new Map();
+      data.forEach((doctor, idx) => {
+        const doctorId = doctor.doctorId;
+        console.log(`Processing doctor ${idx}:`, doctorId, doctor.medicalSpecialityText);
+        if (!doctorMap.has(doctorId)) {
+          // First occurrence - initialize with arrays for facilities and specialties
+          doctorMap.set(doctorId, {
+            ...doctor,
+            facilities: [{
+              facilityId: doctor.medicalFacilityId,
+              facilityName: doctor.medicalFacilityName,
+              facilityNameOTE: doctor.medicalFacilityNameOTE,
+              specialties: [{
+                specialtyId: doctor.medicalSpecialityId,
+                specialtyText: doctor.medicalSpecialityText,
+                specialtyTextOTE: doctor.medicalSpecialityTextOTE,
+                rtId: doctor.medicalFacilityDoctorSpecialityRTId,
+                timeslotCount: doctor.timeslotCount || 0
+              }]
+            }]
+          });
+        } else {
+          // Duplicate doctor - merge facility and specialty
+          console.log('Found duplicate doctor:', doctorId, 'adding specialty:', doctor.medicalSpecialityText);
+          const existingDoctor = doctorMap.get(doctorId);
+          const facilityIndex = existingDoctor.facilities.findIndex(
+            f => f.facilityId === doctor.medicalFacilityId
+          );
+          console.log('Facility index:', facilityIndex);
+          
+          if (facilityIndex === -1) {
+            // New facility for this doctor
+            existingDoctor.facilities.push({
+              facilityId: doctor.medicalFacilityId,
+              facilityName: doctor.medicalFacilityName,
+              facilityNameOTE: doctor.medicalFacilityNameOTE,
+              specialties: [{
+                specialtyId: doctor.medicalSpecialityId,
+                specialtyText: doctor.medicalSpecialityText,
+                specialtyTextOTE: doctor.medicalSpecialityTextOTE,
+                rtId: doctor.medicalFacilityDoctorSpecialityRTId,
+                timeslotCount: doctor.timeslotCount || 0
+              }]
+            });
+          } else {
+            // Existing facility - check if specialty is new (by text, not ID)
+            const facility = existingDoctor.facilities[facilityIndex];
+            const specialtyExists = facility.specialties.some(
+              s => s.specialtyText === doctor.medicalSpecialityText
+            );
+            console.log('Specialty exists?', specialtyExists, 'Current specialties:', facility.specialties.map(s => s.specialtyText));
+            if (!specialtyExists) {
+              console.log('Adding new specialty to existing facility:', doctor.medicalSpecialityText);
+              facility.specialties.push({
+                specialtyId: doctor.medicalSpecialityId,
+                specialtyText: doctor.medicalSpecialityText,
+                specialtyTextOTE: doctor.medicalSpecialityTextOTE,
+                rtId: doctor.medicalFacilityDoctorSpecialityRTId,
+                timeslotCount: doctor.timeslotCount || 0
+              });
+            }
+          }
+        }
+      });
+      
+      const deduplicated = Array.from(doctorMap.values());
+      console.log('Deduplicated doctors:', deduplicated.length, 'unique from', data.length, 'total');
+      return deduplicated;
     }
     
     // Fetch country codes on load
@@ -751,20 +874,20 @@
     
     function renderDoctorResults() {
       const doctorCount = doctors.length;
-      const searchText = window.WIDGET_PARAMS?.searchText || 'doctors';
+      const searchText = SEARCH_TEXT || 'doctors';
       
       container.innerHTML = `
         <div class="header">
           <img src="https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png?v=2" alt="eTabeb" class="logo" style="height: 60px; width: auto; margin: 0 auto 16px; display: block;" />
-          <h1>Book Appointment</h1>
+          <h1>${AR_MODE ? 'حجز موعد' : 'Book Appointment'}</h1>
         </div>
         <div class="content">
           <div class="results-header">
-            <h3>Available ${searchText} Doctors</h3>
-            <span class="results-count">${doctorCount} doctors found</span>
+            <h3>${AR_MODE ? `الأطباء المتاحون ${searchText}` : `Available ${searchText} Doctors`}</h3>
+            <span class="results-count">${AR_MODE ? `تم العثور على ${doctorCount} طبيب` : `${doctorCount} doctors found`}</span>
           </div>
           <div style="color:#94a3b8;font-size:13px;margin:6px 0 14px;">
-            Scroll to browse. Tap a doctor card to view timeslots.
+            ${AR_MODE ? 'مرر للتصفح. اضغط على بطاقة الطبيب لعرض المواعيد.' : 'Scroll to browse. Tap a doctor card to view timeslots.'}
           </div>
           <div id="doctor-list"></div>
         </div>
@@ -776,6 +899,10 @@
     function renderDoctorCards() {
       const doctorList = document.getElementById('doctor-list');
       if (!doctorList) return;
+      
+      console.log('=== RENDERING DOCTORS ===');
+      console.log('AR_MODE:', AR_MODE);
+      console.log('First doctor:', doctors[0]);
       
       doctorList.innerHTML = `
       <div class="doctor-grid-wrapper">
@@ -791,41 +918,111 @@
         </button>
         <div class="doctor-grid" id="doctor-grid-scroll">${doctors.map((doctor, index) => {
         const img = doctor.picURL01 || 'https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png';
-        const name = doctor.doctorName || 'Doctor';
-        const specialty = doctor.medicalSpecialityText || 'Specialty';
-        const facility = doctor.medicalFacilityName || '';
-        const rating = doctor.ratingAvg || doctor.ratingText || 'New';
+        const name = pick(doctor.doctorName, doctor.doctorNameOTE) || 'Doctor';
+        const rating = doctor.ratingAvg || doctor.ratingText || (AR_MODE ? 'جديد' : 'New');
         const price = (doctor.priceRateMin ?? '0');
         const currency = doctor.currencyCode || 'SAR';
-        const slots = doctor.timeslotCount || 0;
+        
+        // Calculate total slots from all facilities/specialties
+        let totalSlots = 0;
+        if (doctor.facilities && Array.isArray(doctor.facilities)) {
+          doctor.facilities.forEach(fac => {
+            fac.specialties.forEach(spec => {
+              totalSlots += spec.timeslotCount || 0;
+            });
+          });
+        } else {
+          totalSlots = doctor.timeslotCount || 0;
+        }
+        
+        // Determine facility and specialty display
+        let facility = '';
+        let specialty = '';
+        
+        if (doctor.facilities && doctor.facilities.length > 0) {
+          // Check if multiple facilities
+          if (doctor.facilities.length > 1) {
+            facility = AR_MODE ? 'منشآت متعددة' : 'Multi Facility';
+          } else {
+            facility = pick(doctor.facilities[0].facilityName, doctor.facilities[0].facilityNameOTE);
+          }
+          
+          // Get all unique specialties across all facilities
+          const allSpecialties = [];
+          doctor.facilities.forEach(fac => {
+            fac.specialties.forEach(spec => {
+              const specText = pick(spec.specialtyText, spec.specialtyTextOTE);
+              if (!allSpecialties.includes(specText)) {
+                allSpecialties.push(specText);
+              }
+            });
+          });
+          
+          // Show all specialties - each on separate line if multiple
+          if (allSpecialties.length > 1) {
+            specialty = allSpecialties.map(s => `• ${s}`).join('<br>');
+          } else {
+            specialty = allSpecialties[0] || (AR_MODE ? 'التخصص' : 'Specialty');
+          }
+        } else {
+          facility = pick(doctor.medicalFacilityName, doctor.medicalFacilityNameOTE);
+          specialty = pick(doctor.medicalSpecialityText, doctor.medicalSpecialityTextOTE) || (AR_MODE ? 'التخصص' : 'Specialty');
+        }
+        
+        const slots = totalSlots;
         
         // Calculate nearest appointment date
-        // Try multiple possible field names from API
+        // Use nearestAvailable field from API or fallback to other fields
         let nearestDate = '';
-        const nextDateField = doctor.nextAvailableDate || doctor.nextAvailableAppointment || doctor.nearestDate || doctor.firstAvailableDate;
+        const nearestAvailableText = doctor.nearestAvailable;
         
-        if (nextDateField) {
-          const dateObj = new Date(nextDateField);
-          const today = new Date();
-          const tomorrow = new Date(today);
-          tomorrow.setDate(tomorrow.getDate() + 1);
-          
-          if (dateObj.toDateString() === today.toDateString()) {
-            nearestDate = 'Available Today';
-          } else if (dateObj.toDateString() === tomorrow.toDateString()) {
-            nearestDate = 'Available Tomorrow';
+        if (nearestAvailableText) {
+          if (AR_MODE) {
+            // Translate common patterns to Arabic
+            if (/Today/i.test(nearestAvailableText)) {
+              nearestDate = 'اليوم';
+            } else if (/Tomorrow/i.test(nearestAvailableText)) {
+              nearestDate = 'غداً';
+            } else {
+              const afterDaysMatch = nearestAvailableText.match(/After (\d+) Days?/i);
+              if (afterDaysMatch) {
+                const days = afterDaysMatch[1];
+                nearestDate = `بعد ${days} ${days === '1' ? 'يوم' : 'أيام'}`;
+              } else {
+                nearestDate = nearestAvailableText;
+              }
+            }
           } else {
-            nearestDate = `Available ${dateObj.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}`;
+            nearestDate = nearestAvailableText;
           }
-        } else if (index === 0) {
-          // Log first doctor's fields to debug
-          console.log('Doctor fields:', Object.keys(doctor));
-          console.log('Full doctor object:', doctor);
+        } else {
+          // Fallback: Try multiple possible field names from API
+          const nextDateField = doctor.nextAvailableDate || doctor.nextAvailableAppointment || doctor.nearestDate || doctor.firstAvailableDate;
+          
+          if (nextDateField) {
+            const dateObj = new Date(nextDateField);
+            const today = new Date();
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            
+            if (dateObj.toDateString() === today.toDateString()) {
+              nearestDate = AR_MODE ? 'متاح اليوم' : 'Available Today';
+            } else if (dateObj.toDateString() === tomorrow.toDateString()) {
+              nearestDate = AR_MODE ? 'متاح غداً' : 'Available Tomorrow';
+            } else {
+              const formattedDate = dateObj.toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+              nearestDate = AR_MODE ? `متاح ${formattedDate}` : `Available ${formattedDate}`;
+            }
+          } else if (index === 0) {
+            // Log first doctor's fields to debug
+            console.log('Doctor fields:', Object.keys(doctor));
+            console.log('Full doctor object:', doctor);
+          }
         }
 
         return `
           <div class="doctor-accordion" id="doctor-${index}">
-            <div class="doctor-availability">${slots} slots</div>
+            <div class="doctor-availability">${slots} ${window.t ? window.t('slots') : 'slots'}</div>
 
             <div class="doctor-card" onclick="toggleDoctorDetails(${index})">
               <img class="doctor-image"
@@ -835,16 +1032,22 @@
 
               <div class="doctor-card-body">
                 <div class="doctor-name">${name}</div>
-                <div class="doctor-specialty">${specialty}</div>
+                <div class="doctor-specialty" style="line-height: 1.6;">${specialty}</div>
                 <div class="doctor-facility">${facility}</div>
-                ${nearestDate ? `<div style="color: #3EBFA5; font-size: 13px; margin-top: 4px; font-weight: 600;">${nearestDate}</div>` : ''}
+                ${nearestDate ? `<div style="color: #3EBFA5; font-size: 13px; margin-top: 4px; font-weight: 600;">${AR_MODE ? 'أقرب موعد:' : 'Nearest Appt:'} ${nearestDate}</div>` : ''}
 
                 <div class="doctor-meta">
                   <span class="doctor-rating">${rating}</span>
                   ${price && price !== '0' ? `<span class="doctor-price">${price} ${currency}</span>` : ''}
                 </div>
 
-                <button class="doctor-cta" type="button">View timeslots</button>
+                <button class="doctor-cta" type="button">${
+                  doctor.facilities && doctor.facilities.length > 1 
+                    ? (AR_MODE ? 'اختر المنشأة' : 'Select Facility')
+                    : (doctor.facilities && doctor.facilities.length > 0 && doctor.facilities[0].specialties.length > 1)
+                      ? (AR_MODE ? 'اختر التخصص' : 'Select Specialty')
+                      : (AR_MODE ? 'عرض المواعيد' : 'View Timeslots')
+                }</button>
               </div>
             </div>
 
@@ -1071,11 +1274,11 @@
       
       detailsDiv.innerHTML = `
         <div style="padding: 20px; background: #1a2332; border-top: 1px solid #2d3748;">
-          <h4 style="color: #fff; margin-bottom: 16px; font-size: 16px;">Select Date</h4>
+          <h4 style="color: #fff; margin-bottom: 16px; font-size: 16px;">${AR_MODE ? 'اختر التاريخ' : 'Select Date'}</h4>
           <div style="display: flex; gap: 12px; overflow-x: auto; margin-bottom: 20px; padding-bottom: 8px;">
             ${dateButtons}
           </div>
-          <h4 style="color: #fff; margin-bottom: 16px; font-size: 16px;">Available Times</h4>
+          <h4 style="color: #fff; margin-bottom: 16px; font-size: 16px;">${AR_MODE ? 'الأوقات المتاحة' : 'Available Times'}</h4>
           <div class="timeslot-grid" id="timeslot-grid-${doctorIndex}">${slots}</div>
         </div>
       `;
@@ -1117,34 +1320,34 @@
       detailsDiv.innerHTML = `
         <div style="padding: 24px; background: rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px); border-top: 1px solid rgba(255, 255, 255, 0.1);">
           <div style="background: rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 24px; margin-bottom: 20px; border: 1px solid rgba(255, 255, 255, 0.12);">
-            <h3 style="color: #fff; margin: 0 0 20px 0; font-size: 20px; font-weight: 700;">Booking Summary</h3>
+            <h3 style="color: #fff; margin: 0 0 20px 0; font-size: 20px; font-weight: 700;">${AR_MODE ? 'ملخص الحجز' : 'Booking Summary'}</h3>
             
             <div style="display: flex; flex-direction: column; gap: 16px;">
               <div style="display: flex; justify-content: space-between; align-items: start;">
                 <div>
-                  <div style="color: rgba(255, 255, 255, 0.6); font-size: 13px; margin-bottom: 4px;">Doctor</div>
-                  <div style="color: #fff; font-size: 16px; font-weight: 600;">${selectedDoctor.doctorName || selectedDoctor.name}</div>
-                  <div style="color: #3EBFA5; font-size: 14px; margin-top: 2px;">${selectedDoctor.medicalSpecialityText || selectedDoctor.specialty}</div>
+                  <div style="color: rgba(255, 255, 255, 0.6); font-size: 13px; margin-bottom: 4px;">${AR_MODE ? 'الطبيب' : 'Doctor'}</div>
+                  <div style="color: #fff; font-size: 16px; font-weight: 600;">${pick(selectedDoctor.doctorName || selectedDoctor.name, selectedDoctor.doctorNameOTE)}</div>
+                  <div style="color: #3EBFA5; font-size: 14px; margin-top: 2px;">${pick(selectedDoctor.medicalSpecialityText || selectedDoctor.specialty, selectedDoctor.medicalSpecialityTextOTE)}</div>
                 </div>
-                <button onclick="renderTimeslotsInline(${doctorIndex})" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='rgba(255, 255, 255, 0.15)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'">Edit</button>
+                <button onclick="renderTimeslotsInline(${doctorIndex})" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='rgba(255, 255, 255, 0.15)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'">${AR_MODE ? 'تعديل' : 'Edit'}</button>
               </div>
               
               <div style="height: 1px; background: rgba(255, 255, 255, 0.1);"></div>
               
               <div>
-                <div style="color: rgba(255, 255, 255, 0.6); font-size: 13px; margin-bottom: 4px;">Facility</div>
-                <div style="color: #fff; font-size: 15px;">${selectedDoctor.medicalFacilityName || selectedDoctor.facility}</div>
+                <div style="color: rgba(255, 255, 255, 0.6); font-size: 13px; margin-bottom: 4px;">${AR_MODE ? 'المنشأة' : 'Facility'}</div>
+                <div style="color: #fff; font-size: 15px;">${pick(selectedDoctor.medicalFacilityName || selectedDoctor.facility, selectedDoctor.medicalFacilityNameOTE)}</div>
               </div>
               
               <div style="height: 1px; background: rgba(255, 255, 255, 0.1);"></div>
               
               <div style="display: flex; gap: 24px;">
                 <div style="flex: 1;">
-                  <div style="color: rgba(255, 255, 255, 0.6); font-size: 13px; margin-bottom: 4px;">Date</div>
+                  <div style="color: rgba(255, 255, 255, 0.6); font-size: 13px; margin-bottom: 4px;">${AR_MODE ? 'التاريخ' : 'Date'}</div>
                   <div style="color: #fff; font-size: 15px; font-weight: 600;">${selectedTimeslot.date}</div>
                 </div>
                 <div style="flex: 1;">
-                  <div style="color: rgba(255, 255, 255, 0.6); font-size: 13px; margin-bottom: 4px;">Time</div>
+                  <div style="color: rgba(255, 255, 255, 0.6); font-size: 13px; margin-bottom: 4px;">${AR_MODE ? 'الوقت' : 'Time'}</div>
                   <div style="color: #fff; font-size: 15px; font-weight: 600;">${selectedTimeslot.time}</div>
                 </div>
               </div>
@@ -1152,12 +1355,12 @@
           </div>
           
           <div style="background: rgba(62, 191, 165, 0.1); border: 1px solid rgba(62, 191, 165, 0.3); border-radius: 12px; padding: 16px; margin-bottom: 20px;">
-            <div style="color: #3EBFA5; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Next Step</div>
-            <div style="color: rgba(255, 255, 255, 0.8); font-size: 14px; line-height: 1.5;">Enter your phone number to receive an OTP and complete your booking.</div>
+            <div style="color: #3EBFA5; font-size: 14px; font-weight: 600; margin-bottom: 8px;">${AR_MODE ? 'الخطوة التالية' : 'Next Step'}</div>
+            <div style="color: rgba(255, 255, 255, 0.8); font-size: 14px; line-height: 1.5;">${AR_MODE ? 'أدخل رقم هاتفك لتلقي رمز التحقق وإكمال حجزك.' : 'Enter your phone number to receive an OTP and complete your booking.'}</div>
           </div>
           
           <div style="margin-bottom: 16px;">
-            <label style="color: #fff; display: block; margin-bottom: 10px; font-weight: 600; font-size: 15px;">Phone Number</label>
+            <label style="color: #fff; display: block; margin-bottom: 10px; font-weight: 600; font-size: 15px;">${AR_MODE ? 'رقم الهاتف' : 'Phone Number'}</label>
             <div style="display: flex; gap: 12px; align-items: stretch;">
               <select id="country-select" style="padding: 14px 12px; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 15px; width: 100px; flex-shrink: 0; cursor: pointer;">
                 ${countryCodes.map(c => `<option value="${c.countryId}">${c.countryKey}</option>`).join('')}
@@ -1166,7 +1369,7 @@
             </div>
           </div>
           
-          <button onclick="sendOTP()" class="btn" style="width: 100%; padding: 16px; font-size: 16px; font-weight: 700; background: #3EBFA5; border: none; border-radius: 12px; color: #fff; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#35a892'" onmouseout="this.style.background='#3EBFA5'">Continue to Verification</button>
+          <button onclick="sendOTP()" class="btn" style="width: 100%; padding: 16px; font-size: 16px; font-weight: 700; background: #3EBFA5; border: none; border-radius: 12px; color: #fff; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#35a892'" onmouseout="this.style.background='#3EBFA5'">${AR_MODE ? 'متابعة التحقق' : 'Continue to Verification'}</button>
           
           <div id="otp-section"></div>
         </div>
@@ -1238,13 +1441,13 @@
       
       otpSection.innerHTML = `
         <div style="margin-top: 20px; padding: 20px; background: rgba(62, 191, 165, 0.1); border: 1px solid rgba(62, 191, 165, 0.3); border-radius: 12px;">
-          <div style="color: #3EBFA5; font-size: 14px; font-weight: 600; margin-bottom: 12px;">OTP Sent!</div>
-          <div style="color: rgba(255, 255, 255, 0.8); font-size: 13px; margin-bottom: 16px;">Please check your phone for the verification code.</div>
+          <div style="color: #3EBFA5; font-size: 14px; font-weight: 600; margin-bottom: 12px;">${AR_MODE ? 'تم إرسال رمز التحقق!' : 'OTP Sent!'}</div>
+          <div style="color: rgba(255, 255, 255, 0.8); font-size: 13px; margin-bottom: 16px;">${AR_MODE ? 'يرجى التحقق من هاتفك للحصول على رمز التحقق.' : 'Please check your phone for the verification code.'}</div>
           
-          <label style="color: #fff; display: block; margin-bottom: 10px; font-weight: 600; font-size: 15px;">Enter OTP Code</label>
-          <input type="text" id="otp-input" placeholder="Enter 4-digit code" maxlength="4" style="width: 100%; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 15px; margin-bottom: 16px;" />
+          <label style="color: #fff; display: block; margin-bottom: 10px; font-weight: 600; font-size: 15px;">${AR_MODE ? 'أدخل رمز التحقق' : 'Enter OTP Code'}</label>
+          <input type="text" id="otp-input" placeholder="${AR_MODE ? 'أدخل الرمز المكون من 4 أرقام' : 'Enter 4-digit code'}" maxlength="4" style="width: 100%; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 15px; margin-bottom: 16px;" />
           
-          <button id="verify-btn" onclick="verifyOTP('${signOTPId}', '${phone}')" style="width: 100%; padding: 16px; font-size: 16px; font-weight: 700; background: #3EBFA5; border: none; border-radius: 12px; color: #fff; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#35a892'" onmouseout="this.style.background='#3EBFA5'">Verify & Continue</button>
+          <button id="verify-btn" onclick="verifyOTP('${signOTPId}', '${phone}')" style="width: 100%; padding: 16px; font-size: 16px; font-weight: 700; background: #3EBFA5; border: none; border-radius: 12px; color: #fff; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#35a892'" onmouseout="this.style.background='#3EBFA5'">${AR_MODE ? 'تحقق ومتابعة' : 'Verify & Continue'}</button>
         </div>
       `;
     }
@@ -1314,13 +1517,13 @@
       
       document.getElementById('otp-section').innerHTML = `
         <div style="margin-top: 20px; padding: 20px; background: rgba(62, 191, 165, 0.1); border: 1px solid rgba(62, 191, 165, 0.3); border-radius: 12px;">
-          <label style="color: #fff; display: block; margin-bottom: 10px; font-weight: 600; font-size: 15px;">Select Patient</label>
+          <label style="color: #fff; display: block; margin-bottom: 10px; font-weight: 600; font-size: 15px;">${AR_MODE ? 'اختر المريض' : 'Select Patient'}</label>
           <select id="patient-select" style="width: 100%; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 15px; margin-bottom: 16px; cursor: pointer;">
-            <option value="" disabled selected>Choose a patient...</option>
+            <option value="" disabled selected>${AR_MODE ? '...اختر مريضاً' : 'Choose a patient...'}</option>
             ${patientOptions}
           </select>
           
-          <button onclick="confirmPatientSelection('${phone}')" style="width: 100%; padding: 16px; font-size: 16px; font-weight: 700; background: #3EBFA5; border: none; border-radius: 12px; color: #fff; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#35a892'" onmouseout="this.style.background='#3EBFA5'">Confirm Booking</button>
+          <button onclick="confirmPatientSelection('${phone}')" style="width: 100%; padding: 16px; font-size: 16px; font-weight: 700; background: #3EBFA5; border: none; border-radius: 12px; color: #fff; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#35a892'" onmouseout="this.style.background='#3EBFA5'">${AR_MODE ? 'تأكيد الحجز' : 'Confirm Booking'}</button>
         </div>
       `;
       
@@ -1347,7 +1550,10 @@
       const scrollAmount = 300; // Scroll by 300px
       const currentScroll = grid.scrollLeft;
       
-      if (direction === 'left') {
+      // In RTL mode, reverse the scroll direction
+      const effectiveDirection = AR_MODE ? (direction === 'left' ? 'right' : 'left') : direction;
+      
+      if (effectiveDirection === 'left') {
         grid.scrollTo({
           left: currentScroll - scrollAmount,
           behavior: 'smooth'
@@ -1379,15 +1585,147 @@
       selectedDate = null; // Reset selected date
 
       detailsDiv.style.display = 'block';
+
+      // Check if doctor has multiple facilities or specialties
+      const hasFacilities = doctor.facilities && doctor.facilities.length > 0;
+      const hasMultipleFacilities = hasFacilities && doctor.facilities.length > 1;
+      
+      if (hasFacilities) {
+        // Check if any facility has multiple specialties
+        const hasMultipleSpecialties = doctor.facilities.some(f => f.specialties.length > 1);
+        
+        if (hasMultipleFacilities || hasMultipleSpecialties) {
+          // Show facility/specialty selection UI
+          renderFacilitySpecialtySelection(index, doctor, detailsDiv);
+          return;
+        } else {
+          // Single facility and single specialty - load timeslots directly
+          const rtId = doctor.facilities[0].specialties[0].rtId;
+          loadTimeslotsForDoctor(index, rtId, detailsDiv);
+        }
+      } else {
+        // Old data format - load directly
+        const doctorId = doctor.medicalFacilityDoctorSpecialityRTId || doctor.id;
+        loadTimeslotsForDoctor(index, doctorId, detailsDiv);
+      }
+    };
+
+    function renderFacilitySpecialtySelection(index, doctor, detailsDiv) {
+      const lang = window.WIDGET_PARAMS?.language || 'en';
+      const isRTL = lang === 'ar';
+      
+      let html = `<div style="padding: 20px; background: #1a2332; border-radius: 12px;">`;
+      
+      // If multiple facilities, show facility selection first
+      if (doctor.facilities.length > 1) {
+        html += `
+          <h4 style="color: #fff; margin-bottom: 16px; ${isRTL ? 'text-align: right;' : ''}">${AR_MODE ? 'اختر المنشأة الطبية' : 'Select Medical Facility'}</h4>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+        `;
+        
+        doctor.facilities.forEach((facility, fIndex) => {
+          const totalSlots = facility.specialties.reduce((sum, s) => sum + (s.timeslotCount || 0), 0);
+          const facilityName = pick(facility.facilityName, facility.facilityNameOTE);
+          html += `
+            <button onclick="selectFacility(${index}, ${fIndex})" 
+                    style="padding: 16px; background: #2d3748; border: 2px solid #3EBFA5; border-radius: 12px; color: #fff; cursor: pointer; text-align: ${isRTL ? 'right' : 'left'}; transition: all 0.3s;"
+                    onmouseover="this.style.background='#374151'"
+                    onmouseout="this.style.background='#2d3748'">
+              <div style="font-weight: 600; font-size: 16px; margin-bottom: 4px;">${facilityName}</div>
+              <div style="color: #94a3b8; font-size: 14px;">${totalSlots} ${AR_MODE ? 'مواعيد متاحة' : 'slots available'}</div>
+            </button>
+          `;
+        });
+        
+        html += `</div></div>`;
+      } else {
+        // Single facility with multiple specialties
+        const facility = doctor.facilities[0];
+        const facilityName = pick(facility.facilityName, facility.facilityNameOTE);
+        html += `
+          <h4 style="color: #fff; margin-bottom: 8px; ${isRTL ? 'text-align: right;' : ''}">${facilityName}</h4>
+          <h5 style="color: #94a3b8; margin-bottom: 16px; font-weight: normal; ${isRTL ? 'text-align: right;' : ''}">${AR_MODE ? 'اختر التخصص' : 'Select Specialty'}</h5>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+        `;
+        
+        facility.specialties.forEach((specialty, sIndex) => {
+          const specText = pick(specialty.specialtyText, specialty.specialtyTextOTE);
+          html += `
+            <button onclick="selectSpecialty(${index}, 0, ${sIndex})" 
+                    style="padding: 16px; background: #2d3748; border: 2px solid #3EBFA5; border-radius: 12px; color: #fff; cursor: pointer; text-align: ${isRTL ? 'right' : 'left'}; transition: all 0.3s;"
+                    onmouseover="this.style.background='#374151'"
+                    onmouseout="this.style.background='#2d3748'">
+              <div style="font-weight: 600; font-size: 16px; margin-bottom: 4px;">${specText}</div>
+              <div style="color: #94a3b8; font-size: 14px;">${specialty.timeslotCount || 0} ${AR_MODE ? 'مواعيد متاحة' : 'slots available'}</div>
+            </button>
+          `;
+        });
+        
+        html += `</div></div>`;
+      }
+      
+      detailsDiv.innerHTML = html;
+    }
+
+    window.selectFacility = function(doctorIndex, facilityIndex) {
+      const doctor = doctors[doctorIndex];
+      const facility = doctor.facilities[facilityIndex];
+      const detailsDiv = document.getElementById(`details-${doctorIndex}`);
+      
+      if (facility.specialties.length > 1) {
+        // Show specialty selection for this facility
+        const lang = window.WIDGET_PARAMS?.language || 'en';
+        const isRTL = lang === 'ar';
+        
+        let html = `<div style="padding: 20px; background: #1a2332; border-radius: 12px;">
+          <button onclick="toggleDoctorDetails(${doctorIndex})" 
+                  style="background: transparent; border: none; color: #3EBFA5; cursor: pointer; margin-bottom: 16px; font-size: 14px; ${isRTL ? 'float: right;' : 'float: left;'}">
+            ← ${window.t ? window.t('back') : 'Back'}
+          </button>
+          <div style="clear: both;"></div>
+          <h4 style="color: #fff; margin-bottom: 8px; ${isRTL ? 'text-align: right;' : ''}">${pick(facility.facilityName, facility.facilityNameOTE)}</h4>
+          <h5 style="color: #94a3b8; margin-bottom: 16px; font-weight: normal; ${isRTL ? 'text-align: right;' : ''}">${AR_MODE ? 'اختر التخصص' : 'Select Specialty'}</h5>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+        `;
+        
+        facility.specialties.forEach((specialty, sIndex) => {
+          const specText = pick(specialty.specialtyText, specialty.specialtyTextOTE);
+          html += `
+            <button onclick="selectSpecialty(${doctorIndex}, ${facilityIndex}, ${sIndex})" 
+                    style="padding: 16px; background: #2d3748; border: 2px solid #3EBFA5; border-radius: 12px; color: #fff; cursor: pointer; text-align: ${isRTL ? 'right' : 'left'}; transition: all 0.3s;"
+                    onmouseover="this.style.background='#374151'"
+                    onmouseout="this.style.background='#2d3748'">
+              <div style="font-weight: 600; font-size: 16px; margin-bottom: 4px;">${specText}</div>
+              <div style="color: #94a3b8; font-size: 14px;">${specialty.timeslotCount || 0} ${AR_MODE ? 'مواعيد متاحة' : 'slots available'}</div>
+            </button>
+          `;
+        });
+        
+        html += `</div></div>`;
+        detailsDiv.innerHTML = html;
+      } else {
+        // Single specialty - load timeslots directly
+        const rtId = facility.specialties[0].rtId;
+        loadTimeslotsForDoctor(doctorIndex, rtId, detailsDiv);
+      }
+    };
+
+    window.selectSpecialty = function(doctorIndex, facilityIndex, specialtyIndex) {
+      const doctor = doctors[doctorIndex];
+      const rtId = doctor.facilities[facilityIndex].specialties[specialtyIndex].rtId;
+      const detailsDiv = document.getElementById(`details-${doctorIndex}`);
+      
+      loadTimeslotsForDoctor(doctorIndex, rtId, detailsDiv);
+    };
+
+    async function loadTimeslotsForDoctor(index, rtId, detailsDiv) {
       detailsDiv.innerHTML = '<div class="loading">Loading timeslots...</div>';
 
       try {
-        const doctorId = doctor.medicalFacilityDoctorSpecialityRTId || doctor.id;
-
         const response = await fetch(`${baseUrl}/api/timeslots`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ medicalFacilityDoctorSpecialityRTId: doctorId })
+          body: JSON.stringify({ medicalFacilityDoctorSpecialityRTId: rtId })
         });
 
         timeslots = await response.json();
@@ -1395,7 +1733,7 @@
       } catch (err) {
         detailsDiv.innerHTML = `<div class="error">Failed to load timeslots: ${err.message}</div>`;
       }
-    };
+    }
 
     window.selectPatient = async function(index, phone) {
       const patient = window.patientsData[index];
@@ -1481,6 +1819,9 @@
             window.WIDGET_PARAMS = window.WIDGET_PARAMS || {};
             window.WIDGET_PARAMS.searchText = searchText;
             console.log('✅ Resolved searchText from MCP context:', searchText);
+            
+            // Update Arabic mode with the resolved searchText
+            updateArabicMode(searchText);
           } else {
             console.log('❌ Could not resolve searchText from MCP context');
           }
@@ -1514,12 +1855,12 @@
           if (doctors.length > 0) {
             renderDoctorResults();
           } else {
-            document.getElementById('results').innerHTML = '<div class="loading">No doctors found for ' + searchText + '</div>';
+            container.innerHTML = '<div class="loading" style="text-align: center; padding: 40px; color: #fff;">No doctors found for ' + searchText + '</div>';
           }
         } catch (e) {
           console.error('❌ Error fetching doctors:', e);
-          document.getElementById('results').innerHTML =
-            `<p style="color: #d32f2f; text-align: center;">Error: ${e.message}</p>`;
+          container.innerHTML =
+            `<p style="color: #d32f2f; text-align: center; padding: 40px;">Error: ${e.message}</p>`;
         }
       } else {
         // No preloaded doctors and no searchText - show search UI

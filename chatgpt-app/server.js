@@ -18,7 +18,16 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(express.json());
-app.use(express.static('public'));
+// Disable caching for static files to ensure latest widget loads
+app.use(express.static('public', {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
 
 // Serve widget with URL parameters
 app.get('/widget', (req, res) => {
@@ -58,8 +67,9 @@ const widgetHtml = fs.readFileSync(
   'utf-8'
 );
 
-// Store search context in memory (session-based)
+// Store search context and doctor data in memory (session-based)
 let currentSearchContext = '';
+const sessionData = new Map(); // Map<sessionId, {searchText, doctors, language}>
 
 server.setRequestHandler(ListResourcesRequestSchema, async () => {
   return {
@@ -188,6 +198,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   throw new Error(`Unknown tool: ${name}`);
 });
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    name: 'eTabeb Medical Booking Assistant',
+    version: '1.0.0',
+    status: 'online',
+    mcp_endpoint: '/mcp-v2',
+    manifest: '/.well-known/mcp-manifest.json'
+  });
+});
+
+// MCP Manifest endpoint for ChatGPT discovery
+app.get('/.well-known/mcp-manifest.json', (req, res) => {
+  console.log('📋 Serving MCP manifest');
+  try {
+    const manifest = JSON.parse(fs.readFileSync('./mcp-manifest.json', 'utf8'));
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.json(manifest);
+  } catch (error) {
+    console.error('Error serving MCP manifest:', error);
+    res.status(500).json({ error: 'Failed to load manifest' });
+  }
+});
+
 // OAuth discovery endpoints (return empty/disabled OAuth)
 app.get('/.well-known/oauth-authorization-server', (req, res) => {
   res.status(404).json({ error: 'OAuth not configured' });
@@ -270,46 +305,130 @@ app.post('/mcp', async (req, res) => {
       console.log('🔍 SERVING resources/read from', req.path);
       const uri = request.params?.uri;
       if (uri && uri.startsWith('resource://booking-widget')) {
-        // Prioritize currentSearchContext (contains cleaned search text that worked)
-        // over URL parameter (contains original search text)
-        let searchText = (currentSearchContext || '').trim();
+        // Get session data if available
+        const sessionId = request.params?._meta?.['openai/session'] || 'default';
+        const session = sessionData.get(sessionId);
         
-        // If currentSearchContext is empty, try URL parameter as fallback
-        if (!searchText) {
-          try {
-            const parsed = new URL(uri.replace('resource://', 'https://resource.local/'));
-            searchText = (parsed.searchParams.get('searchText') || '').trim();
-          } catch {
-            searchText = '';
+        let searchText = '';
+        let preloadedDoctorsData = [];
+        let language = 'en';
+        
+        if (session) {
+          console.log('[MCP resources/read] Found session data for:', sessionId);
+          searchText = session.searchText;
+          preloadedDoctorsData = session.doctors;
+          language = session.language;
+        } else {
+          // Fallback: try URL parameter or currentSearchContext
+          searchText = (currentSearchContext || '').trim();
+          
+          if (!searchText) {
+            try {
+              const parsed = new URL(uri.replace('resource://', 'https://resource.local/'));
+              searchText = (parsed.searchParams.get('searchText') || '').trim();
+            } catch {
+              searchText = '';
+            }
           }
         }
 
-        // Fetch doctors at render-time to ensure widget always has data
-        let preloadedDoctorsData = [];
-        try {
-          if (searchText) {
-            console.log('[MCP resources/read] Fetching doctors for searchText:', searchText);
-            const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
+        // Fetch doctors only if not already loaded from session
+        if (preloadedDoctorsData.length === 0) {
+          try {
+            if (searchText) {
+              console.log('[MCP resources/read] Fetching doctors for searchText:', searchText);
+              const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ searchText }),
             });
-            const doctors = await apiResponse.json();
-            if (Array.isArray(doctors)) preloadedDoctorsData = doctors;
+            let doctors = await apiResponse.json();
+            if (Array.isArray(doctors)) {
+              // Deduplicate doctors by DoctorId and merge facilities/specialties
+              const doctorMap = new Map();
+              doctors.forEach(doctor => {
+                const doctorId = doctor.doctorId;
+                if (!doctorMap.has(doctorId)) {
+                  // First occurrence - initialize with arrays for facilities and specialties
+                  doctorMap.set(doctorId, {
+                    ...doctor,
+                    facilities: [{
+                      facilityId: doctor.medicalFacilityId,
+                      facilityName: doctor.medicalFacilityName,
+                      specialties: [{
+                        specialtyId: doctor.medicalSpecialityId,
+                        specialtyText: doctor.medicalSpecialityText,
+                        rtId: doctor.medicalFacilityDoctorSpecialityRTId,
+                        timeslotCount: doctor.timeslotCount || 0
+                      }]
+                    }]
+                  });
+                } else {
+                  // Duplicate doctor - merge facility and specialty
+                  const existingDoctor = doctorMap.get(doctorId);
+                  const facilityIndex = existingDoctor.facilities.findIndex(
+                    f => f.facilityId === doctor.medicalFacilityId
+                  );
+                  
+                  if (facilityIndex === -1) {
+                    // New facility for this doctor
+                    existingDoctor.facilities.push({
+                      facilityId: doctor.medicalFacilityId,
+                      facilityName: doctor.medicalFacilityName,
+                      specialties: [{
+                        specialtyId: doctor.medicalSpecialityId,
+                        specialtyText: doctor.medicalSpecialityText,
+                        rtId: doctor.medicalFacilityDoctorSpecialityRTId,
+                        timeslotCount: doctor.timeslotCount || 0
+                      }]
+                    });
+                  } else {
+                    // Existing facility - check if specialty is new
+                    const facility = existingDoctor.facilities[facilityIndex];
+                    const specialtyExists = facility.specialties.some(
+                      s => s.specialtyId === doctor.medicalSpecialityId
+                    );
+                    if (!specialtyExists) {
+                      facility.specialties.push({
+                        specialtyId: doctor.medicalSpecialityId,
+                        specialtyText: doctor.medicalSpecialityText,
+                        rtId: doctor.medicalFacilityDoctorSpecialityRTId,
+                        timeslotCount: doctor.timeslotCount || 0
+                      });
+                    }
+                  }
+                }
+              });
+              
+              preloadedDoctorsData = Array.from(doctorMap.values());
+              console.log('[MCP resources/read] Deduplicated doctors:', preloadedDoctorsData.length, 'unique doctors');
+            }
           }
-        } catch (error) {
-          console.error('[MCP resources/read] Error fetching doctors:', error);
+          } catch (error) {
+            console.error('[MCP resources/read] Error fetching doctors:', error);
+          }
         }
 
         const hasPreloaded = preloadedDoctorsData.length > 0;
         console.log('[MCP resources/read] Loading widget with:', { searchText, hasPreloaded, doctorCount: preloadedDoctorsData.length });
 
-        // Inject searchText and preloaded doctors into widget HTML as JSON
+        // Detect language if not already set from session
+        if (!language || language === 'en') {
+          const isArabic = /[\u0600-\u06FF]/.test(searchText);
+          language = isArabic ? 'ar' : 'en';
+        }
+        
+        // Inject searchText, language, and preloaded doctors into widget HTML as JSON
         let customWidgetHtml = widgetHtml.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL);
         const widgetParamsScript = `<script>
-          window.WIDGET_PARAMS = { searchText: ${JSON.stringify(searchText)}, preloadedResults: ${hasPreloaded} };
+          window.WIDGET_PARAMS = { 
+            searchText: ${JSON.stringify(searchText)}, 
+            preloadedResults: ${hasPreloaded},
+            lang: ${JSON.stringify(language)}
+          };
           window.PRELOADED_DOCTORS_DATA = ${JSON.stringify(preloadedDoctorsData)};
           console.log('[RESOURCES/READ] searchText:', window.WIDGET_PARAMS?.searchText);
+          console.log('[RESOURCES/READ] lang:', window.WIDGET_PARAMS?.lang);
           console.log('[RESOURCES/READ] preloadedResults:', window.WIDGET_PARAMS?.preloadedResults);
           console.log('[RESOURCES/READ] Injected doctors:', window.PRELOADED_DOCTORS_DATA?.length || 0);
         </script>`;
@@ -369,7 +488,7 @@ app.post('/mcp', async (req, res) => {
                 properties: {
                   searchText: {
                     type: 'string',
-                    description: 'Doctor specialty, doctor name, or medical condition from user message (e.g., "endocrinology", "Dr. Smith", "diabetes")',
+                    description: 'IMPORTANT: Extract ONLY the doctor name, specialty, or condition WITHOUT any titles or prefixes. Remove titles like: Dr., Doctor, Prof., Professor, استشاري, دكتور, دكتورة, طبيب, بروفيسور. Examples: "خالد فاروقي" NOT "دكتور خالد فاروقي", "Smith" NOT "Dr. Smith", "جراحة قلب" NOT "استشاري جراحة قلب"',
                   },
                 },
                 required: ['searchText'],
@@ -522,8 +641,9 @@ app.post('/mcp', async (req, res) => {
             // Also prepare a version with titles removed
             let searchWithTitlesRemoved = searchWithCommonWordsRemoved
               .replace(/\b(dr\.?|doctor|prof\.?|professor)\s+/gi, '')
-              .replace(/(طبيب|دكتور|دكتورة|استشاري|بروفيسور)\s+/g, '')
-              .replace(/\s+(طبيب|دكتور|دكتورة|استشاري|بروفيسور)/g, '')
+              // Remove Arabic titles with definite article (الدكتور، الطبيب، etc.)
+              .replace(/(ال)?(طبيب|دكتور|دكتورة|استشاري|بروفيسور)\s+/g, '')
+              .replace(/\s+(ال)?(طبيب|دكتور|دكتورة|استشاري|بروفيسور)/g, '')
               .replace(/\s+(doctor|doctors)$/gi, '')
               .trim();
             
@@ -561,7 +681,61 @@ app.post('/mcp', async (req, res) => {
             
             console.log('[MCP] Received doctors:', doctors?.length || 0);
             
+            // Deduplicate doctors by DoctorId and merge facilities/specialties
             if (doctors && doctors.length > 0) {
+              console.log('[MCP] Deduplicating doctors by DoctorId...');
+              const doctorMap = new Map();
+              doctors.forEach(doctor => {
+                const doctorId = doctor.doctorId;
+                if (!doctorMap.has(doctorId)) {
+                  doctorMap.set(doctorId, {
+                    ...doctor,
+                    facilities: [{
+                      facilityId: doctor.medicalFacilityId,
+                      facilityName: doctor.medicalFacilityName,
+                      specialties: [{
+                        specialtyId: doctor.medicalSpecialityId,
+                        specialtyText: doctor.medicalSpecialityText,
+                        rtId: doctor.medicalFacilityDoctorSpecialityRTId,
+                        timeslotCount: doctor.timeslotCount || 0
+                      }]
+                    }]
+                  });
+                } else {
+                  const existingDoctor = doctorMap.get(doctorId);
+                  const facilityIndex = existingDoctor.facilities.findIndex(
+                    f => f.facilityId === doctor.medicalFacilityId
+                  );
+
+                  if (facilityIndex === -1) {
+                    existingDoctor.facilities.push({
+                      facilityId: doctor.medicalFacilityId,
+                      facilityName: doctor.medicalFacilityName,
+                      specialties: [{
+                        specialtyId: doctor.medicalSpecialityId,
+                        specialtyText: doctor.medicalSpecialityText,
+                        rtId: doctor.medicalFacilityDoctorSpecialityRTId,
+                        timeslotCount: doctor.timeslotCount || 0
+                      }]
+                    });
+                  } else {
+                    const facility = existingDoctor.facilities[facilityIndex];
+                    const specialtyExists = facility.specialties.some(
+                      s => s.specialtyId === doctor.medicalSpecialityId
+                    );
+                    if (!specialtyExists) {
+                      facility.specialties.push({
+                        specialtyId: doctor.medicalSpecialityId,
+                        specialtyText: doctor.medicalSpecialityText,
+                        rtId: doctor.medicalFacilityDoctorSpecialityRTId,
+                        timeslotCount: doctor.timeslotCount || 0
+                      });
+                    }
+                  }
+                }
+              });
+              doctors = Array.from(doctorMap.values());
+              console.log('[MCP] Deduplicated doctors:', doctors.length, 'unique doctors');
               doctorCount = doctors.length;
               // Generate HTML for doctor results using DoctorList API fields
               doctorsHtml = doctors.map(doctor => `
@@ -588,11 +762,25 @@ app.post('/mcp', async (req, res) => {
           }
         }
         
+        // Detect language based on searchText (Arabic vs English)
+        const isArabic = /[\u0600-\u06FF]/.test(currentSearchContext);
+        const language = isArabic ? 'ar' : 'en';
+        console.log('[MCP] Detected language:', language);
+        
+        // Store session data for resources/read to use later
+        const sessionId = request.params?._meta?.['openai/session'] || 'default';
+        sessionData.set(sessionId, {
+          searchText: currentSearchContext,
+          doctors: doctors,
+          language: language
+        });
+        console.log('[MCP] Stored session data for session:', sessionId);
+        
         console.log('[MCP] About to inject doctors into widget HTML, count:', doctorCount);
         console.log('[MCP] currentSearchContext is set to:', currentSearchContext);
         
         // currentSearchContext was already set in the cleaning logic above to the successful search term
-        // Return simple text response - outputTemplate will handle opening the widget
+        // Return response with widget metadata to trigger resource load
         response = {
           jsonrpc: '2.0',
           id: request.id,
@@ -604,6 +792,9 @@ app.post('/mcp', async (req, res) => {
               }
             ],
             isError: false,
+            _meta: {
+              'openai/outputTemplate': `resource://booking-widget?searchText=${encodeURIComponent(currentSearchContext)}`
+            }
           },
         };
         } catch (error) {
@@ -1097,46 +1288,130 @@ app.post('/mcp-v2', async (req, res) => {
       console.log('🔍 SERVING resources/read from', req.path);
       const uri = request.params?.uri;
       if (uri && uri.startsWith('resource://booking-widget')) {
-        // Prioritize currentSearchContext (contains cleaned search text that worked)
-        // over URL parameter (contains original search text)
-        let searchText = (currentSearchContext || '').trim();
+        // Get session data if available
+        const sessionId = request.params?._meta?.['openai/session'] || 'default';
+        const session = sessionData.get(sessionId);
         
-        // If currentSearchContext is empty, try URL parameter as fallback
-        if (!searchText) {
-          try {
-            const parsed = new URL(uri.replace('resource://', 'https://resource.local/'));
-            searchText = (parsed.searchParams.get('searchText') || '').trim();
-          } catch {
-            searchText = '';
+        let searchText = '';
+        let preloadedDoctorsData = [];
+        let language = 'en';
+        
+        if (session) {
+          console.log('[MCP resources/read] Found session data for:', sessionId);
+          searchText = session.searchText;
+          preloadedDoctorsData = session.doctors;
+          language = session.language;
+        } else {
+          // Fallback: try URL parameter or currentSearchContext
+          searchText = (currentSearchContext || '').trim();
+          
+          if (!searchText) {
+            try {
+              const parsed = new URL(uri.replace('resource://', 'https://resource.local/'));
+              searchText = (parsed.searchParams.get('searchText') || '').trim();
+            } catch {
+              searchText = '';
+            }
           }
         }
 
-        // Fetch doctors at render-time to ensure widget always has data
-        let preloadedDoctorsData = [];
-        try {
-          if (searchText) {
-            console.log('[MCP resources/read] Fetching doctors for searchText:', searchText);
-            const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
+        // Fetch doctors only if not already loaded from session
+        if (preloadedDoctorsData.length === 0) {
+          try {
+            if (searchText) {
+              console.log('[MCP resources/read] Fetching doctors for searchText:', searchText);
+              const apiResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ searchText }),
             });
-            const doctors = await apiResponse.json();
-            if (Array.isArray(doctors)) preloadedDoctorsData = doctors;
+            let doctors = await apiResponse.json();
+            if (Array.isArray(doctors)) {
+              // Deduplicate doctors by DoctorId and merge facilities/specialties
+              const doctorMap = new Map();
+              doctors.forEach(doctor => {
+                const doctorId = doctor.doctorId;
+                if (!doctorMap.has(doctorId)) {
+                  // First occurrence - initialize with arrays for facilities and specialties
+                  doctorMap.set(doctorId, {
+                    ...doctor,
+                    facilities: [{
+                      facilityId: doctor.medicalFacilityId,
+                      facilityName: doctor.medicalFacilityName,
+                      specialties: [{
+                        specialtyId: doctor.medicalSpecialityId,
+                        specialtyText: doctor.medicalSpecialityText,
+                        rtId: doctor.medicalFacilityDoctorSpecialityRTId,
+                        timeslotCount: doctor.timeslotCount || 0
+                      }]
+                    }]
+                  });
+                } else {
+                  // Duplicate doctor - merge facility and specialty
+                  const existingDoctor = doctorMap.get(doctorId);
+                  const facilityIndex = existingDoctor.facilities.findIndex(
+                    f => f.facilityId === doctor.medicalFacilityId
+                  );
+                  
+                  if (facilityIndex === -1) {
+                    // New facility for this doctor
+                    existingDoctor.facilities.push({
+                      facilityId: doctor.medicalFacilityId,
+                      facilityName: doctor.medicalFacilityName,
+                      specialties: [{
+                        specialtyId: doctor.medicalSpecialityId,
+                        specialtyText: doctor.medicalSpecialityText,
+                        rtId: doctor.medicalFacilityDoctorSpecialityRTId,
+                        timeslotCount: doctor.timeslotCount || 0
+                      }]
+                    });
+                  } else {
+                    // Existing facility - check if specialty is new
+                    const facility = existingDoctor.facilities[facilityIndex];
+                    const specialtyExists = facility.specialties.some(
+                      s => s.specialtyId === doctor.medicalSpecialityId
+                    );
+                    if (!specialtyExists) {
+                      facility.specialties.push({
+                        specialtyId: doctor.medicalSpecialityId,
+                        specialtyText: doctor.medicalSpecialityText,
+                        rtId: doctor.medicalFacilityDoctorSpecialityRTId,
+                        timeslotCount: doctor.timeslotCount || 0
+                      });
+                    }
+                  }
+                }
+              });
+              
+              preloadedDoctorsData = Array.from(doctorMap.values());
+              console.log('[MCP resources/read] Deduplicated doctors:', preloadedDoctorsData.length, 'unique doctors');
+            }
           }
-        } catch (error) {
-          console.error('[MCP resources/read] Error fetching doctors:', error);
+          } catch (error) {
+            console.error('[MCP resources/read] Error fetching doctors:', error);
+          }
         }
 
         const hasPreloaded = preloadedDoctorsData.length > 0;
         console.log('[MCP resources/read] Loading widget with:', { searchText, hasPreloaded, doctorCount: preloadedDoctorsData.length });
 
-        // Inject searchText and preloaded doctors into widget HTML as JSON
+        // Detect language if not already set from session
+        if (!language || language === 'en') {
+          const isArabic = /[\u0600-\u06FF]/.test(searchText);
+          language = isArabic ? 'ar' : 'en';
+        }
+        
+        // Inject searchText, language, and preloaded doctors into widget HTML as JSON
         let customWidgetHtml = widgetHtml.replace('{{BOOKING_APP_URL}}', BOOKING_APP_URL);
         const widgetParamsScript = `<script>
-          window.WIDGET_PARAMS = { searchText: ${JSON.stringify(searchText)}, preloadedResults: ${hasPreloaded} };
+          window.WIDGET_PARAMS = { 
+            searchText: ${JSON.stringify(searchText)}, 
+            preloadedResults: ${hasPreloaded},
+            lang: ${JSON.stringify(language)}
+          };
           window.PRELOADED_DOCTORS_DATA = ${JSON.stringify(preloadedDoctorsData)};
           console.log('[RESOURCES/READ] searchText:', window.WIDGET_PARAMS?.searchText);
+          console.log('[RESOURCES/READ] lang:', window.WIDGET_PARAMS?.lang);
           console.log('[RESOURCES/READ] preloadedResults:', window.WIDGET_PARAMS?.preloadedResults);
           console.log('[RESOURCES/READ] Injected doctors:', window.PRELOADED_DOCTORS_DATA?.length || 0);
         </script>`;
@@ -1196,7 +1471,7 @@ app.post('/mcp-v2', async (req, res) => {
                 properties: {
                   searchText: {
                     type: 'string',
-                    description: 'Doctor specialty, doctor name, or medical condition from user message (e.g., "endocrinology", "Dr. Smith", "diabetes")',
+                    description: 'IMPORTANT: Extract ONLY the doctor name, specialty, or condition WITHOUT any titles or prefixes. Remove titles like: Dr., Doctor, Prof., Professor, استشاري, دكتور, دكتورة, طبيب, بروفيسور. Examples: "خالد فاروقي" NOT "دكتور خالد فاروقي", "Smith" NOT "Dr. Smith", "جراحة قلب" NOT "استشاري جراحة قلب"',
                   },
                 },
                 required: ['searchText'],
@@ -1349,8 +1624,9 @@ app.post('/mcp-v2', async (req, res) => {
             // Also prepare a version with titles removed
             let searchWithTitlesRemoved = searchWithCommonWordsRemoved
               .replace(/\b(dr\.?|doctor|prof\.?|professor)\s+/gi, '')
-              .replace(/(طبيب|دكتور|دكتورة|استشاري|بروفيسور)\s+/g, '')
-              .replace(/\s+(طبيب|دكتور|دكتورة|استشاري|بروفيسور)/g, '')
+              // Remove Arabic titles with definite article (الدكتور، الطبيب، etc.)
+              .replace(/(ال)?(طبيب|دكتور|دكتورة|استشاري|بروفيسور)\s+/g, '')
+              .replace(/\s+(ال)?(طبيب|دكتور|دكتورة|استشاري|بروفيسور)/g, '')
               .replace(/\s+(doctor|doctors)$/gi, '')
               .trim();
             
@@ -1388,7 +1664,61 @@ app.post('/mcp-v2', async (req, res) => {
             
             console.log('[MCP] Received doctors:', doctors?.length || 0);
             
+            // Deduplicate doctors by DoctorId and merge facilities/specialties
             if (doctors && doctors.length > 0) {
+              console.log('[MCP] Deduplicating doctors by DoctorId...');
+              const doctorMap = new Map();
+              doctors.forEach(doctor => {
+                const doctorId = doctor.doctorId;
+                if (!doctorMap.has(doctorId)) {
+                  doctorMap.set(doctorId, {
+                    ...doctor,
+                    facilities: [{
+                      facilityId: doctor.medicalFacilityId,
+                      facilityName: doctor.medicalFacilityName,
+                      specialties: [{
+                        specialtyId: doctor.medicalSpecialityId,
+                        specialtyText: doctor.medicalSpecialityText,
+                        rtId: doctor.medicalFacilityDoctorSpecialityRTId,
+                        timeslotCount: doctor.timeslotCount || 0
+                      }]
+                    }]
+                  });
+                } else {
+                  const existingDoctor = doctorMap.get(doctorId);
+                  const facilityIndex = existingDoctor.facilities.findIndex(
+                    f => f.facilityId === doctor.medicalFacilityId
+                  );
+
+                  if (facilityIndex === -1) {
+                    existingDoctor.facilities.push({
+                      facilityId: doctor.medicalFacilityId,
+                      facilityName: doctor.medicalFacilityName,
+                      specialties: [{
+                        specialtyId: doctor.medicalSpecialityId,
+                        specialtyText: doctor.medicalSpecialityText,
+                        rtId: doctor.medicalFacilityDoctorSpecialityRTId,
+                        timeslotCount: doctor.timeslotCount || 0
+                      }]
+                    });
+                  } else {
+                    const facility = existingDoctor.facilities[facilityIndex];
+                    const specialtyExists = facility.specialties.some(
+                      s => s.specialtyId === doctor.medicalSpecialityId
+                    );
+                    if (!specialtyExists) {
+                      facility.specialties.push({
+                        specialtyId: doctor.medicalSpecialityId,
+                        specialtyText: doctor.medicalSpecialityText,
+                        rtId: doctor.medicalFacilityDoctorSpecialityRTId,
+                        timeslotCount: doctor.timeslotCount || 0
+                      });
+                    }
+                  }
+                }
+              });
+              doctors = Array.from(doctorMap.values());
+              console.log('[MCP] Deduplicated doctors:', doctors.length, 'unique doctors');
               doctorCount = doctors.length;
               // Generate HTML for doctor results using DoctorList API fields
               doctorsHtml = doctors.map(doctor => `
@@ -1415,11 +1745,25 @@ app.post('/mcp-v2', async (req, res) => {
           }
         }
         
+        // Detect language based on searchText (Arabic vs English)
+        const isArabic = /[\u0600-\u06FF]/.test(currentSearchContext);
+        const language = isArabic ? 'ar' : 'en';
+        console.log('[MCP] Detected language:', language);
+        
+        // Store session data for resources/read to use later
+        const sessionId = request.params?._meta?.['openai/session'] || 'default';
+        sessionData.set(sessionId, {
+          searchText: currentSearchContext,
+          doctors: doctors,
+          language: language
+        });
+        console.log('[MCP] Stored session data for session:', sessionId);
+        
         console.log('[MCP] About to inject doctors into widget HTML, count:', doctorCount);
         console.log('[MCP] currentSearchContext is set to:', currentSearchContext);
         
         // currentSearchContext was already set in the cleaning logic above to the successful search term
-        // Return simple text response - outputTemplate will handle opening the widget
+        // Return response with widget metadata to trigger resource load
         response = {
           jsonrpc: '2.0',
           id: request.id,
@@ -1431,6 +1775,9 @@ app.post('/mcp-v2', async (req, res) => {
               }
             ],
             isError: false,
+            _meta: {
+              'openai/outputTemplate': `resource://booking-widget?searchText=${encodeURIComponent(currentSearchContext)}`
+            }
           },
         };
         } catch (error) {

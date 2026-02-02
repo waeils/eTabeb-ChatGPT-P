@@ -10,7 +10,7 @@
     "version": "1.0",
     "transport": {
       "type": "http",
-      "url": "https://mcp.etabeb.sa/mcp"
+      "url": "https://mcp.etabeb.sa/mcp-v2"
     },
     "capabilities": {
       "tools": true,
