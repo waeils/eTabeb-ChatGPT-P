@@ -636,7 +636,7 @@
   <div id="booking-container"></div>
   
   <script>
-    console.log('🔄 Widget Version: 2026-02-02-v2 - Arabic RTL Fixes');
+    console.log('🔄 Widget Version: 2026-02-03-v1 - Fixed SEARCH_TEXT Update');
     const container = document.getElementById('booking-container');
     const baseUrl = '{{BOOKING_APP_URL}}';
     
@@ -703,8 +703,59 @@
       }
     }
 
+    // Levenshtein distance for fuzzy string matching
+    function levenshteinDistance(str1, str2) {
+      const len1 = str1.length;
+      const len2 = str2.length;
+      const matrix = Array(len1 + 1).fill(null).map(() => Array(len2 + 1).fill(0));
+      
+      for (let i = 0; i <= len1; i++) matrix[i][0] = i;
+      for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+      
+      for (let i = 1; i <= len1; i++) {
+        for (let j = 1; j <= len2; j++) {
+          const cost = str1[i - 1].toLowerCase() === str2[j - 1].toLowerCase() ? 0 : 1;
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j] + 1,
+            matrix[i][j - 1] + 1,
+            matrix[i - 1][j - 1] + cost
+          );
+        }
+      }
+      
+      return matrix[len1][len2];
+    }
+
+    function similarityScore(str1, str2) {
+      const distance = levenshteinDistance(str1, str2);
+      const maxLen = Math.max(str1.length, str2.length);
+      return maxLen === 0 ? 1 : 1 - (distance / maxLen);
+    }
+
+    // Get doctors from MCP tool call
+    async function getDoctorsFromMcp(searchText) {
+      try {
+        console.log('[MCP] Calling get_doctors_data for:', searchText);
+        if (!window.openai || typeof window.openai.callTool !== 'function') {
+          console.log('[MCP] OpenAI API not available');
+          return [];
+        }
+        const resp = await window.openai.callTool('get_doctors_data', { searchText });
+        const textItem = resp?.content?.find?.(c => c?.type === 'text');
+        if (!textItem?.text) return [];
+        const parsed = JSON.parse(textItem.text);
+        const doctors = parsed?.doctors || [];
+        console.log('[MCP] Retrieved', doctors.length, 'doctors from MCP');
+        return doctors;
+      } catch (e) {
+        console.error('[MCP] Error getting doctors:', e);
+        return [];
+      }
+    }
+
     // Normalize preloaded doctors injected by the MCP server
     function getPreloadedDoctors() {
+      // Fallback to window.PRELOADED_DOCTORS_DATA
       let preloaded = window.PRELOADED_DOCTORS_DATA;
 
       // Some runtimes inject as a JSON string
@@ -724,7 +775,7 @@
     // Fetch doctors directly from the official API (CSP already allows etapisd.etabeb.com)
     async function searchDoctorsFromApi(searchText) {
       const q = (searchText || '').trim();
-      if (!q) return [];
+      // Allow empty search to fetch all doctors for fuzzy matching
 
       const res = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
         method: 'POST',
@@ -1034,7 +1085,7 @@
                 <div class="doctor-name">${name}</div>
                 <div class="doctor-specialty" style="line-height: 1.6;">${specialty}</div>
                 <div class="doctor-facility">${facility}</div>
-                ${nearestDate ? `<div style="color: #3EBFA5; font-size: 13px; margin-top: 4px; font-weight: 600;">${AR_MODE ? 'أقرب موعد:' : 'Nearest Appt:'} ${nearestDate}</div>` : ''}
+                ${nearestDate ? `<div style="color: #3EBFA5; font-size: 13px; margin-top: 4px; font-weight: 600;">${AR_MODE ? 'أقرب موعد: ' + nearestDate : nearestDate}</div>` : ''}
 
                 <div class="doctor-meta">
                   <span class="doctor-rating">${rating}</span>
@@ -1759,8 +1810,13 @@
         });
         const data = await response.json();
         
+        console.log('[BOOKING] API Response:', data);
+        
         if (data.success) {
-          showSuccess();
+          // Extract confirmation number from API response
+          const confirmationNumber = data.confirmationNumber || data.bookingId || data.reservationId || data.appointmentId || null;
+          console.log('[BOOKING] Confirmation Number:', confirmationNumber);
+          showSuccess(confirmationNumber);
         } else {
           alert('Booking failed: ' + (data.message || 'Unknown error'));
           loadPatients(phone, currentSessionId); // Reload patient list on error
@@ -1771,27 +1827,33 @@
       }
     };
     
-    function showSuccess() {
-      const doctorName = selectedDoctor.doctorName || selectedDoctor.name || 'the doctor';
+    function showSuccess(confirmationNumber) {
+      const doctorName = pick(selectedDoctor.doctorName || selectedDoctor.name, selectedDoctor.doctorNameOTE) || (AR_MODE ? 'الطبيب' : 'the doctor');
       
       container.innerHTML = `
         <div class="header">
           <img src="https://e-tabeb-chat-gpt-p.vercel.app/etabeb-logo.png?v=2" alt="eTabeb" class="logo" style="height: 60px; width: auto; margin: 0 auto 16px; display: block;" />
-          <h1>Booking Confirmed!</h1>
+          <h1>${AR_MODE ? 'تم تأكيد الحجز!' : 'Booking Confirmed!'}</h1>
         </div>
         <div class="content" style="text-align: center; padding: 40px 20px;">
           <div style="font-size: 64px; margin-bottom: 24px;">✅</div>
-          <h2 style="color: #3EBFA5; font-size: 24px; font-weight: 700; margin-bottom: 16px;">Success!</h2>
+          <h2 style="color: #3EBFA5; font-size: 24px; font-weight: 700; margin-bottom: 16px;">${AR_MODE ? 'نجح!' : 'Success!'}</h2>
           <div style="color: rgba(255, 255, 255, 0.9); font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
-            Your appointment with <strong>${doctorName}</strong><br/>
-            on <strong>${selectedTimeslot.date}</strong> at <strong>${selectedTimeslot.time}</strong><br/>
-            has been successfully booked.
+            ${AR_MODE ? 'موعدك مع' : 'Your appointment with'} <strong>${doctorName}</strong><br/>
+            ${AR_MODE ? 'في' : 'on'} <strong>${selectedTimeslot.date}</strong> ${AR_MODE ? 'الساعة' : 'at'} <strong>${selectedTimeslot.time}</strong><br/>
+            ${AR_MODE ? 'تم حجزه بنجاح.' : 'has been successfully booked.'}
           </div>
+          ${confirmationNumber ? `
+          <div style="background: rgba(62, 191, 165, 0.15); border: 2px solid #3EBFA5; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+            <div style="color: #3EBFA5; font-size: 14px; font-weight: 600; margin-bottom: 8px;">${AR_MODE ? 'رقم التأكيد' : 'Confirmation Number'}</div>
+            <div style="color: #fff; font-size: 28px; font-weight: 700; letter-spacing: 2px;">${confirmationNumber}</div>
+          </div>
+          ` : ''}
           <div style="background: rgba(62, 191, 165, 0.1); border: 1px solid rgba(62, 191, 165, 0.3); border-radius: 12px; padding: 16px; margin-bottom: 24px;">
-            <div style="color: #3EBFA5; font-size: 14px; font-weight: 600; margin-bottom: 8px;">What's Next?</div>
-            <div style="color: rgba(255, 255, 255, 0.8); font-size: 14px;">You will receive a confirmation message shortly. Please arrive 10 minutes before your appointment time.</div>
+            <div style="color: #3EBFA5; font-size: 14px; font-weight: 600; margin-bottom: 8px;">${AR_MODE ? 'ما التالي؟' : 'What\'s Next?'}</div>
+            <div style="color: rgba(255, 255, 255, 0.8); font-size: 14px;">${AR_MODE ? 'سوف تتلقى رسالة تأكيد قريباً. يرجى الحضور قبل 10 دقائق من موعدك.' : 'You will receive a confirmation message shortly. Please arrive 10 minutes before your appointment time.'}</div>
           </div>
-          <button onclick="location.reload()" style="padding: 16px 32px; font-size: 16px; font-weight: 700; background: #3EBFA5; border: none; border-radius: 12px; color: #fff; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#35a892'" onmouseout="this.style.background='#3EBFA5'">Book Another Appointment</button>
+          <button onclick="location.reload()" style="padding: 16px 32px; font-size: 16px; font-weight: 700; background: #3EBFA5; border: none; border-radius: 12px; color: #fff; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#35a892'" onmouseout="this.style.background='#3EBFA5'">${AR_MODE ? 'حجز موعد آخر' : 'Book Another Appointment'}</button>
         </div>
       `;
     }
@@ -1839,17 +1901,93 @@
         console.log('Loaded doctors:', doctors.length);
         console.log('First doctor:', doctors[0]);
         
+        // Update SEARCH_TEXT with the current searchText
+        SEARCH_TEXT = searchText;
+        console.log('Updated SEARCH_TEXT to:', SEARCH_TEXT);
+        
         // Show doctor cards immediately - Booking.com style
         renderDoctorResults();
       } else if (searchText && searchText.trim()) {
-        // No preloaded doctors but we have a valid searchText - fetch and render cards
+        // No preloaded doctors but we have a valid searchText - try MCP first, then API
         console.log('📡 Fetching doctors for:', searchText);
+        console.log('📡 About to call getDoctorsFromMcp...');
+        console.log('📡 window.openai available:', !!window.openai);
+        console.log('📡 window.openai.callTool available:', typeof window.openai?.callTool);
+        
+        // Update SEARCH_TEXT with the current searchText
+        SEARCH_TEXT = searchText;
         
         // Show loading state
         container.innerHTML = '<div class="loading" style="text-align: center; padding: 40px; color: #fff;">Loading doctors...</div>';
         
         try {
-          doctors = await searchDoctorsFromApi(searchText);
+          // First try to get fuzzy-matched doctors from MCP server
+          console.log('📡 Calling getDoctorsFromMcp now...');
+          doctors = await getDoctorsFromMcp(searchText);
+          console.log('📡 getDoctorsFromMcp returned:', doctors.length, 'doctors');
+          
+          // If MCP didn't return doctors, fallback to direct API call with fuzzy matching
+          if (doctors.length === 0) {
+            console.log('📡 MCP returned no doctors, trying direct API with fuzzy matching...');
+            
+            // First try exact match
+            doctors = await searchDoctorsFromApi(searchText);
+            
+            // If no exact match and searchText looks like a name, try fetching all doctors for fuzzy matching
+            if (doctors.length === 0 && searchText.includes(' ')) {
+              console.log('📡 No exact match, fetching all doctors for client-side fuzzy matching...');
+              const allDoctors = await searchDoctorsFromApi('');
+              
+              if (allDoctors && allDoctors.length > 0) {
+                console.log('📡 Got', allDoctors.length, 'doctors, performing fuzzy matching...');
+                
+                // Advanced fuzzy matching using Levenshtein distance
+                const searchLower = searchText.toLowerCase();
+                const searchWords = searchLower.split(' ').filter(w => w.length > 2);
+                
+                const matches = allDoctors.map(doctor => {
+                  const nameEn = (doctor.doctorName || '').toLowerCase();
+                  const nameAr = (doctor.doctorNameOTE || '').toLowerCase();
+                  
+                  // Calculate similarity scores for full name
+                  let scoreEn = similarityScore(searchLower, nameEn);
+                  let scoreAr = similarityScore(searchLower, nameAr);
+                  
+                  // Word-by-word matching with first name priority
+                  const doctorWords = nameEn.split(' ');
+                  const searchFirstWord = searchWords[0]; // First word of search (e.g., "khaled")
+                  let maxWordScore = 0;
+                  let firstNameScore = 0;
+                  
+                  for (let i = 0; i < searchWords.length; i++) {
+                    for (let j = 0; j < doctorWords.length; j++) {
+                      const wordScore = similarityScore(searchWords[i], doctorWords[j]);
+                      maxWordScore = Math.max(maxWordScore, wordScore);
+                      
+                      // Boost score if first search word matches first doctor word
+                      if (i === 0 && j === 0 && wordScore > 0.7) {
+                        firstNameScore = wordScore * 1.2; // 20% bonus for first name match
+                      }
+                    }
+                  }
+                  
+                  // Use the best score from all methods, with first name bonus
+                  const score = Math.max(scoreEn, scoreAr, maxWordScore, firstNameScore);
+                  return { doctor, score, matchedName: scoreEn > scoreAr ? nameEn : nameAr };
+                })
+                .filter(m => m.score > 0.7) // Keep matches with >70% similarity
+                .sort((a, b) => b.score - a.score) // Sort by best match first
+                .slice(0, 30); // Take top 30 to include more spelling variations
+                
+                if (matches.length > 0) {
+                  console.log('📡 Found', matches.length, 'fuzzy matches on client side');
+                  console.log('📡 Best match:', matches[0].matchedName, 'with score:', matches[0].score.toFixed(2));
+                  doctors = matches.map(m => m.doctor);
+                }
+              }
+            }
+          }
+          
           console.log('✅ Fetched doctors:', doctors.length);
           
           if (doctors.length > 0) {

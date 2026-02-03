@@ -17,36 +17,6 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Levenshtein distance for fuzzy string matching
-function levenshteinDistance(str1, str2) {
-  const len1 = str1.length;
-  const len2 = str2.length;
-  const matrix = Array(len1 + 1).fill(null).map(() => Array(len2 + 1).fill(0));
-  
-  for (let i = 0; i <= len1; i++) matrix[i][0] = i;
-  for (let j = 0; j <= len2; j++) matrix[0][j] = j;
-  
-  for (let i = 1; i <= len1; i++) {
-    for (let j = 1; j <= len2; j++) {
-      const cost = str1[i - 1].toLowerCase() === str2[j - 1].toLowerCase() ? 0 : 1;
-      matrix[i][j] = Math.min(
-        matrix[i - 1][j] + 1,
-        matrix[i][j - 1] + 1,
-        matrix[i - 1][j - 1] + cost
-      );
-    }
-  }
-  
-  return matrix[len1][len2];
-}
-
-function similarityScore(str1, str2) {
-  const distance = levenshteinDistance(str1, str2);
-  const maxLen = Math.max(str1.length, str2.length);
-  return maxLen === 0 ? 1 : 1 - (distance / maxLen);
-}
-
-
 app.use(express.json());
 // Disable caching for static files to ensure latest widget loads
 app.use(express.static('public', {
@@ -343,17 +313,12 @@ app.post('/mcp', async (req, res) => {
         let preloadedDoctorsData = [];
         let language = 'en';
         
-        console.log('[MCP resources/read] Session ID:', sessionId);
-        console.log('[MCP resources/read] Available sessions:', Array.from(sessionData.keys()));
-        
         if (session) {
-          console.log('[MCP resources/read] ✅ Found session data');
+          console.log('[MCP resources/read] Found session data for:', sessionId);
           searchText = session.searchText;
-          preloadedDoctorsData = session.doctors || [];
+          preloadedDoctorsData = session.doctors;
           language = session.language;
-          console.log('[MCP resources/read] Session doctors:', preloadedDoctorsData.length);
         } else {
-          console.log('[MCP resources/read] ❌ No session found, using currentSearchContext');
           // Fallback: try URL parameter or currentSearchContext
           searchText = (currentSearchContext || '').trim();
           
@@ -1698,64 +1663,6 @@ app.post('/mcp-v2', async (req, res) => {
             console.log('[MCP] ===== END WIDGET CLEANING =====');
             
             console.log('[MCP] Received doctors:', doctors?.length || 0);
-
-            // If no results and search looks like a name (has space), try fuzzy matching
-            if ((!doctors || doctors.length === 0) && searchWithCommonWordsRemoved.includes(' ')) {
-              console.log('[MCP] No exact matches, trying fuzzy name matching...');
-              
-              const allDoctorsResponse = await fetch('https://etapisd.etabeb.com/api/AI/DoctorList', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ searchText: '' }),
-              });
-              const allDoctors = await allDoctorsResponse.json();
-              
-              if (allDoctors && allDoctors.length > 0) {
-                console.log('[MCP] Searching through', allDoctors.length, 'doctors for fuzzy matches');
-                
-                const searchLower = searchWithCommonWordsRemoved.toLowerCase();
-                const searchWords = searchLower.split(' ').filter(w => w.length > 2);
-                
-                const matches = allDoctors.map(doctor => {
-                  const doctorNameEn = (doctor.doctorName || '').toLowerCase();
-                  const doctorNameAr = (doctor.doctorNameOTE || '').toLowerCase();
-                  
-                  let scoreEn = similarityScore(searchLower, doctorNameEn);
-                  let scoreAr = similarityScore(searchLower, doctorNameAr);
-                  
-                  const doctorWords = doctorNameEn.split(' ');
-                  let maxWordScore = 0;
-                  let firstNameScore = 0;
-                  
-                  for (let i = 0; i < searchWords.length; i++) {
-                    for (let j = 0; j < doctorWords.length; j++) {
-                      const wordScore = similarityScore(searchWords[i], doctorWords[j]);
-                      maxWordScore = Math.max(maxWordScore, wordScore);
-                      
-                      // Boost score if first search word matches first doctor word
-                      if (i === 0 && j === 0 && wordScore > 0.7) {
-                        firstNameScore = wordScore * 1.2; // 20% bonus for first name match
-                      }
-                    }
-                  }
-                  
-                  const score = Math.max(scoreEn, scoreAr, maxWordScore, firstNameScore);
-                  return { doctor, score, matchedName: scoreEn > scoreAr ? doctorNameEn : doctorNameAr };
-                })
-                .filter(m => m.score > 0.7)
-                .sort((a, b) => b.score - a.score)
-                .slice(0, 30);
-                
-                if (matches.length > 0) {
-                  console.log('[MCP] Found', matches.length, 'fuzzy matches');
-                  console.log('[MCP] Best match:', matches[0].matchedName, 'with score:', matches[0].score.toFixed(2));
-                  doctors = matches.map(m => m.doctor);
-                } else {
-                  console.log('[MCP] No fuzzy matches found with >70% similarity');
-                }
-              }
-            }
-
             
             // Deduplicate doctors by DoctorId and merge facilities/specialties
             if (doctors && doctors.length > 0) {
@@ -2019,11 +1926,7 @@ app.post('/mcp-v2', async (req, res) => {
           };
         }
       } else if (name === 'get_search_context') {
-        // Return the current search context from session
-        const sessionId = request.params?._meta?.['openai/session'] || 'default';
-        const session = sessionData.get(sessionId);
-        const searchText = session?.searchText || currentSearchContext || '';
-        console.log('[MCP] get_search_context called, returning:', searchText, 'from session:', sessionId);
+        // Return the current search context for the widget
         response = {
           jsonrpc: '2.0',
           id: request.id,
@@ -2031,7 +1934,7 @@ app.post('/mcp-v2', async (req, res) => {
             content: [
               {
                 type: 'text',
-                text: JSON.stringify({ searchText }),
+                text: JSON.stringify({ searchText: currentSearchContext }),
               },
             ],
             isError: false,
