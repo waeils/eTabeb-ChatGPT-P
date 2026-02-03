@@ -1723,23 +1723,41 @@ app.post('/mcp-v2', async (req, res) => {
                   let scoreEn = similarityScore(searchLower, doctorNameEn);
                   let scoreAr = similarityScore(searchLower, doctorNameAr);
                   
-                  const doctorWords = doctorNameEn.split(' ');
-                  let maxWordScore = 0;
-                  let firstNameScore = 0;
+                  // Word-by-word matching with first name priority for ENGLISH
+                  const doctorWordsEn = doctorNameEn.split(' ');
+                  let maxWordScoreEn = 0;
+                  let firstNameScoreEn = 0;
                   
                   for (let i = 0; i < searchWords.length; i++) {
-                    for (let j = 0; j < doctorWords.length; j++) {
-                      const wordScore = similarityScore(searchWords[i], doctorWords[j]);
-                      maxWordScore = Math.max(maxWordScore, wordScore);
+                    for (let j = 0; j < doctorWordsEn.length; j++) {
+                      const wordScore = similarityScore(searchWords[i], doctorWordsEn[j]);
+                      maxWordScoreEn = Math.max(maxWordScoreEn, wordScore);
                       
                       // Boost score if first search word matches first doctor word
                       if (i === 0 && j === 0 && wordScore > 0.7) {
-                        firstNameScore = wordScore * 1.2; // 20% bonus for first name match
+                        firstNameScoreEn = wordScore * 1.2; // 20% bonus for first name match
                       }
                     }
                   }
                   
-                  const score = Math.max(scoreEn, scoreAr, maxWordScore, firstNameScore);
+                  // Word-by-word matching with first name priority for ARABIC
+                  const doctorWordsAr = doctorNameAr.split(' ');
+                  let maxWordScoreAr = 0;
+                  let firstNameScoreAr = 0;
+                  
+                  for (let i = 0; i < searchWords.length; i++) {
+                    for (let j = 0; j < doctorWordsAr.length; j++) {
+                      const wordScore = similarityScore(searchWords[i], doctorWordsAr[j]);
+                      maxWordScoreAr = Math.max(maxWordScoreAr, wordScore);
+                      
+                      // Boost score if first search word matches first doctor word
+                      if (i === 0 && j === 0 && wordScore > 0.7) {
+                        firstNameScoreAr = wordScore * 1.2; // 20% bonus for first name match
+                      }
+                    }
+                  }
+                  
+                  const score = Math.max(scoreEn, scoreAr, maxWordScoreEn, maxWordScoreAr, firstNameScoreEn, firstNameScoreAr);
                   return { doctor, score, matchedName: scoreEn > scoreAr ? doctorNameEn : doctorNameAr };
                 })
                 .filter(m => m.score > 0.7)
